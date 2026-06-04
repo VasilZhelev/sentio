@@ -1,155 +1,302 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  Image, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  Platform,
+  Dimensions
+} from 'react-native';
+import Mapbox from '@rnmapbox/maps';
+import TacticalBlur from '../../components/TacticalBlur';
 import { useSentioStore } from '../../store/useSentioStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { THEMES } from '../../constants/Styles';
+import { getThemePalette, FONTS, UI, TACTICAL_TAG } from '../../constants/Styles';
 
+const { width, height } = Dimensions.get('window');
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function ShowdownScreen() {
   const { ghostRiders, telemetry, sportProfile, theme } = useSentioStore();
-  const t = THEMES[theme];
+  const palette = useMemo(() => getThemePalette(sportProfile, theme), [sportProfile, theme]);
 
   const allRiders = useMemo(() => {
     const user = {
       id: 'user_1',
-      name: 'You',
+      name: 'YOU',
       speed: telemetry.speed,
       peakGForce: telemetry.gForce,
       crashes: 0,
-      avatarUri: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=120&h=120&fit=crop',
-      sport: sportProfile
+      avatarUri: require('../../assets/images/avatar_user.png'),
+      level: 45,
+      achievements: ['✨', '💎', '🚀'],
     };
-    const mappedRiders = ghostRiders.map(r => ({ ...r, sport: sportProfile }));
-    return [...mappedRiders, user];
-  }, [ghostRiders, telemetry, sportProfile]);
+    return [...ghostRiders, user];
+  }, [ghostRiders, telemetry]);
 
   const sortedBySpeed = [...allRiders].sort((a, b) => b.speed - a.speed);
   const sortedByGForce = [...allRiders].sort((a, b) => b.peakGForce - a.peakGForce);
-  const sortedByCrashes = [...allRiders].sort((a, b) => b.crashes - a.crashes);
-
-  const renderPodium = (
-    title: string,
-    icon: keyof typeof Ionicons.glyphMap,
-    color: string,
-    data: any[],
-    valueKey: 'speed' | 'peakGForce' | 'crashes',
-    unit: string,
-    isWreck: boolean = false
-  ) => {
-    const top3 = data.slice(0, 3);
-    const rest = data.slice(3, 5);
-
-    return (
-      <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-        <View style={styles.cardHeader}>
-          <Ionicons name={icon} size={20} color={color} style={{ marginRight: 6 }} />
-          <Text style={[styles.cardTitle, { color: t.text }]}>{title}</Text>
-        </View>
-        
-        {/* Top 3 Podium (Horizontal) */}
-        <View style={styles.podiumContainer}>
-          {top3.map((rider, index) => (
-            <View key={rider.id} style={styles.podiumItem}>
-              <View>
-                <Image source={{ uri: rider.avatarUri }} style={[styles.podiumAvatar, index === 0 && { borderColor: color, borderWidth: 2 }]} />
-                <View style={styles.medalBadge}><Text style={styles.medalText}>{MEDALS[index]}</Text></View>
-              </View>
-              <Text style={[styles.podiumName, { color: t.text }]} numberOfLines={1}>{rider.name}</Text>
-              <Text style={[styles.podiumValue, index === 0 && { color, fontSize: 16 }]}>
-                {Number(rider[valueKey]).toFixed(valueKey === 'peakGForce' ? 1 : 0)}
-                <Text style={styles.podiumUnit}>{unit}</Text>
-                {index === 0 && isWreck && <Text style={{fontSize:10}}>💀</Text>}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* The Rest (Tiny List) */}
-        {rest.length > 0 && (
-          <View style={styles.restContainer}>
-            {rest.map((rider, index) => (
-              <View key={rider.id} style={styles.restRow}>
-                <Text style={[styles.restRank, { color: t.textSoft }]}>#{index + 4}</Text>
-                <Image source={{ uri: rider.avatarUri }} style={styles.restAvatar} />
-                <Text style={[styles.restName, { color: t.textSoft }]} numberOfLines={1}>{rider.name}</Text>
-                <Text style={[styles.restValue, { color: t.text }]}>
-                  {Number(rider[valueKey]).toFixed(valueKey === 'peakGForce' ? 1 : 0)} <Text style={{fontSize: 10}}>{unit}</Text>
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: t.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} indicatorStyle={theme === 'DARK' ? 'white' : 'black'}>
+    <View style={styles.root}>
+      {/* ── IMMERSIVE MAP BACKGROUND ── */}
+      <Mapbox.MapView
+        style={StyleSheet.absoluteFillObject}
+        styleURL={theme === 'DARK' ? Mapbox.StyleURL.Dark : Mapbox.StyleURL.Light}
+        logoEnabled={false}
+        attributionEnabled={false}
+      >
+        <Mapbox.Camera
+          zoomLevel={11}
+          centerCoordinate={[24.6946, 41.6504]} 
+          pitch={45}
+        />
+      </Mapbox.MapView>
+
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: t.text }]}>STAT SHOWDOWN</Text>
+          <Text style={styles.headerTitle}>SQUAD DASH</Text>
+          <View style={[styles.badgeContainer, { backgroundColor: palette.accent + '20' }]}>
+            <Text style={[styles.badgeText, { color: palette.accent }]}>COMPETITIVE // REGION: EU-CENTRAL</Text>
+          </View>
         </View>
 
-        {renderPodium('Speed Demon', 'speedometer', theme === 'DARK' ? '#39FF14' : '#16A34A', sortedBySpeed, 'speed', 'kph')}
-        {renderPodium("Heavy G's", 'rocket', theme === 'DARK' ? '#00F0FF' : '#0284C7', sortedByGForce, 'peakGForce', 'G')}
-        {renderPodium('Wrecking Ball', 'warning', theme === 'DARK' ? '#FF073A' : '#DC2626', sortedByCrashes, 'crashes', 'bails', true)}
+        {renderPodium('SPEED DEMONS', 'speedometer', '#FF3B30', sortedBySpeed, 'speed', 'KPH', palette)}
+        {renderPodium('HEAVY G-FORCE', 'rocket', '#5E5CE6', sortedByGForce, 'peakGForce', 'G', palette)}
 
         <TouchableOpacity 
-          style={[styles.shareBtn, { backgroundColor: t.text }]}
+          style={[styles.shareBtn, UI.tacticalShadow]}
           onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
+          activeOpacity={0.8}
         >
-          <Text style={[styles.shareText, { color: t.background }]}>SHARE RESULTS</Text>
-          <Ionicons name="share-social-outline" size={20} color={t.background} style={{ marginLeft: 8 }} />
+          <TacticalBlur tint="dark" intensity={UI.glassBlur} style={styles.shareBlur}>
+            <Text style={styles.shareText}>EXPORT RECAP</Text>
+            <Ionicons name="share-social" size={20} color="#FFF" style={{ marginLeft: 10 }} />
+          </TacticalBlur>
         </TouchableOpacity>
         
       </ScrollView>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+function renderPodium(title: string, icon: any, color: string, data: any[], valueKey: any, unit: string, palette: any) {
+  const top3 = data.slice(0, 3);
+
+  // Gamification: reorder visually so 1st is center, 2nd is left, 3rd is right
+  const visuallyOrdered = [top3[1], top3[0], top3[2]].filter(Boolean);
+  const rankMap = new Map();
+  top3.forEach((r, i) => rankMap.set(r.id, i));
+
+  return (
+    <TacticalBlur tint="dark" intensity={UI.glassBlur + 10} style={[styles.card, UI.tacticalShadow]}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
+          <Ionicons name={icon} size={18} color={color} />
+        </View>
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+      
+      <View style={styles.podiumContainer}>
+        {visuallyOrdered.map((rider) => {
+          const rank = rankMap.get(rider.id);
+          const isFirst = rank === 0;
+          
+          let rankColor = color;
+          if (rank === 0) rankColor = '#FFD700'; // Gold
+          if (rank === 1) rankColor = '#C0C0C0'; // Silver
+          if (rank === 2) rankColor = '#CD7F32'; // Bronze
+
+          return (
+            <View key={rider.id} style={[styles.podiumItem, isFirst && styles.firstPlaceItem]}>
+              <View style={styles.avatarWrapper}>
+                <Image 
+                  source={typeof rider.avatarUri === 'string' ? { uri: rider.avatarUri } : rider.avatarUri} 
+                  style={[
+                    styles.avatar, 
+                    { borderColor: rankColor, borderWidth: rank === 0 ? 3 : 2 },
+                    isFirst && { width: 72, height: 72, borderRadius: 36, shadowColor: rankColor, shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width:0, height:0 } }
+                  ]} 
+                />
+                
+                {rider.level && (
+                  <View style={[styles.levelBadge, isFirst && { backgroundColor: rankColor, borderColor: rankColor }]}>
+                    <Text style={[styles.levelText, isFirst && { color: '#000' }]}>{rider.level}</Text>
+                  </View>
+                )}
+
+                <View style={[styles.medal, isFirst && { bottom: -10, transform: [{scale: 1.2}], backgroundColor: rankColor }]}>
+                  <Text style={styles.medalText}>{MEDALS[rank]}</Text>
+                </View>
+              </View>
+
+              <Text style={[styles.name, isFirst && { fontSize: 13, fontWeight: '900', color: '#FFF' }]} numberOfLines={1}>
+                {rider.name}
+              </Text>
+              
+              {rider.achievements && rider.achievements.length > 0 && (
+                <View style={styles.achievementsRow}>
+                  {rider.achievements.map((ach: string, i: number) => (
+                    <Text key={i} style={[styles.achievementText, isFirst && { fontSize: 14 }]}>{ach}</Text>
+                  ))}
+                </View>
+              )}
+
+              <Text style={[styles.value, { color: rankColor }]}>
+                {Number(rider[valueKey]).toFixed(valueKey === 'peakGForce' ? 1 : 0)}
+                <Text style={[styles.unit, { color: rankColor }]}>{unit}</Text>
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </TacticalBlur>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 30 },
-  header: {
-    marginTop: Platform.OS === 'ios' ? 0 : 20,
-    marginBottom: 16,
-    alignItems: 'center',
+  root: { flex: 1, backgroundColor: '#000' },
+  scroll: { padding: UI.pagePadding, paddingTop: 60, paddingBottom: 120 },
+
+  header: { alignItems: 'center', marginBottom: 32 },
+  headerTitle: { 
+    color: '#FFF', 
+    fontSize: 28, 
+    fontWeight: '900', 
+    letterSpacing: 2, 
+    fontFamily: FONTS.sans,
+    marginBottom: 8,
   },
-  headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: 1.5, fontStyle: 'italic' },
+  badgeContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: FONTS.mono,
+    letterSpacing: 1,
+  },
   
   card: {
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
     borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  cardTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  iconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardTitle: { 
+    color: '#FFF', 
+    fontSize: 16, 
+    fontWeight: '800', 
+    letterSpacing: 1, 
+    fontFamily: FONTS.sans 
+  },
   
-  podiumContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  podiumItem: { alignItems: 'center', width: '31%' },
-  podiumAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
-  medalBadge: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#FFF', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center', shadowColor:'#000', shadowOpacity: 0.2, shadowRadius:3, elevation:2 },
-  medalText: { fontSize: 10 },
-  podiumName: { fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center' },
-  podiumValue: { fontSize: 14, fontWeight: '900', marginTop: 2, fontVariant: ['tabular-nums'] },
-  podiumUnit: { fontSize: 10, fontWeight: '600' },
+  podiumContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 180,
+  },
+  podiumItem: { alignItems: 'center', width: '31%', paddingBottom: 10 },
+  firstPlaceItem: { width: '36%', paddingBottom: 0 },
   
-  restContainer: { borderTopWidth: 1, borderTopColor: 'rgba(150,150,150,0.2)', paddingTop: 12, gap: 6 },
-  restRow: { flexDirection: 'row', alignItems: 'center' },
-  restRank: { fontSize: 11, fontWeight: '800', width: 24 },
-  restAvatar: { width: 20, height: 20, borderRadius: 10, marginRight: 8 },
-  restName: { flex: 1, fontSize: 12, fontWeight: '600' },
-  restValue: { fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  avatarWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatar: { 
+    width: 56, 
+    height: 56, 
+    borderRadius: 28, 
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  levelBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#333',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    zIndex: 2,
+  },
+  levelText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '900',
+    fontFamily: FONTS.technical,
+  },
+  medal: { 
+    position: 'absolute', 
+    bottom: -8, 
+    backgroundColor: '#FFF', 
+    borderRadius: 12, 
+    width: 24, 
+    height: 24, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    zIndex: 2,
+  },
+  medalText: { fontSize: 13 },
+  
+  name: { color: '#8E8E93', fontSize: 11, fontWeight: '800', marginTop: 4, textAlign: 'center', fontFamily: FONTS.sans },
+  
+  achievementsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  achievementText: {
+    fontSize: 11,
+    marginHorizontal: 1,
+  },
+
+  value: { color: '#FFF', fontSize: 16, fontWeight: '900', marginTop: 4, fontFamily: FONTS.technical },
+  unit: { fontSize: 10, color: '#8E8E93' },
   
   shareBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, borderRadius: 100, marginTop: 4,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
+    marginTop: 10,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
-  shareText: { fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  shareBlur: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  shareText: { color: '#FFF', fontSize: 15, fontWeight: '800', letterSpacing: 1, fontFamily: FONTS.sans },
 });

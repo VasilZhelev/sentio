@@ -1,74 +1,79 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import React, { useMemo } from 'react';
+import { Platform, StyleSheet } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { Ionicons } from '@expo/vector-icons';
 import { useSentioStore } from '@/store/useSentioStore';
-import { THEMES, SPORT_PROFILES } from '@/constants/Styles';
+import { getThemePalette, FONTS } from '@/constants/Styles';
 
 export default function TabLayout() {
   const { theme, sportProfile } = useSentioStore();
-  const t = THEMES[theme];
-  const accent = SPORT_PROFILES[sportProfile].accent;
+  const palette = useMemo(() => getThemePalette(sportProfile, theme), [sportProfile, theme]);
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: accent,
-        tabBarInactiveTintColor: t.textSoft,
+        tabBarActiveTintColor: palette.accent,
+        tabBarInactiveTintColor: '#8E8E93',
         tabBarStyle: {
-          backgroundColor: t.surface,
-          borderTopColor: t.border,
+          backgroundColor: '#1C1C1E', // Tactical deep slate
+          borderTopColor: 'rgba(255, 255, 255, 0.08)',
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 88 : 68,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          height: Platform.OS === 'ios' ? 90 : 70,
+          paddingBottom: Platform.OS === 'ios' ? 30 : 12,
           paddingTop: 8,
-          elevation: 0,
+          elevation: 10,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '700',
-          letterSpacing: 0.5,
+          fontFamily: FONTS.sans,
+          textTransform: 'uppercase',
+          letterSpacing: 0.8,
         },
         headerShown: false,
         tabBarButton: HapticTab,
+        // PERFORMANCE FIXES:
+        // Use lazy loading for tabs so we don't boot all 3 Mapboxes at once
+        lazy: true,
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Map',
+          title: 'RADAR',
           tabBarIcon: ({ color }) => (
-            <Ionicons size={24} name="map" color={color} />
+            <Ionicons size={22} name="map" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Dashboard',
+          title: 'DATA',
           tabBarIcon: ({ color }) => (
-            <Ionicons size={24} name="speedometer" color={color} />
+            <Ionicons size={22} name="stats-chart" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="showdown"
         options={{
-          title: 'Showdown',
+          title: 'SQUAD',
           tabBarIcon: ({ color }) => (
-            <Ionicons size={24} name="trophy" color={color} />
+            <Ionicons size={22} name="people" color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Settings',
+          title: 'SYSTEM',
           tabBarIcon: ({ color }) => (
-            <Ionicons size={24} name="settings-sharp" color={color} />
+            <Ionicons size={22} name="options" color={color} />
           ),
         }}
       />
     </Tabs>
   );
 }
+

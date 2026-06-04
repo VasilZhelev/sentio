@@ -32,7 +32,9 @@ export interface GhostRider {
   speed: number;
   peakGForce: number;
   crashes: number;
-  avatarUri: string;
+  avatarUri: any;
+  level: number;
+  achievements: string[];
 }
 
 // ─── Store ───────────────────────────────────────────────
@@ -46,10 +48,12 @@ interface SentioState {
   telemetry: Telemetry;
   hazards: Hazard[];
   ghostRiders: GhostRider[];
+  squadStatus: { onlineCount: number; totalCount: number };
   isEmergency: boolean;
   bleConnected: boolean;
   bleDeviceId: string | null;
   isDemoCentered: boolean;
+  glassesBattery: number;
 
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -61,7 +65,18 @@ interface SentioState {
   setEmergency: (status: boolean) => void;
   setBleConnected: (status: boolean) => void;
   setBleDeviceId: (id: string | null) => void;
+  updateGhostRider: (id: string, data: Partial<GhostRider>) => void;
   centerDemoData: (lat: number, lng: number) => void;
+  setGlassesBattery: (battery: number) => void;
+
+  // ── Crash Detection ──
+  isCrashOverlayVisible: boolean;
+  crashCountdown: number;
+  crashStatus: 'IDLE' | 'COUNTDOWN' | 'SENT' | 'CANCELLED';
+  triggerCrash: () => void;
+  cancelCrash: () => void;
+  tickCrash: () => void;
+  finishCrash: () => void;
 }
 
 export const useSentioStore = create<SentioState>((set) => ({
@@ -77,8 +92,8 @@ export const useSentioStore = create<SentioState>((set) => ({
     gForce: 1.0,
     lapTime: '00:00.00',
     airTime: 0,
-    latitude: 41.6378,
-    longitude: 24.6769,
+    latitude: 41.6337,
+    longitude: 24.6882,
   },
 
   // ── Demo Hazards ──
@@ -90,21 +105,22 @@ export const useSentioStore = create<SentioState>((set) => ({
     { id: 'h5', type: 'Closed Trail', latitude: 41.6380, longitude: 24.6790, reportedBy: 'Phoenix',   reportedAgo: '20 min' },
   ],
 
-  // ── Demo Ghost Riders (High Quality Avatars) ──
+  // ── 5 Friends on Pamporovo — matching routes ──
   ghostRiders: [
-    { id: 'g1', name: 'Maverick',  latitude: 41.6441, longitude: 24.6885, sport: 'SKI', speed: 67, peakGForce: 3.2, crashes: 1, avatarUri: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&h=120&fit=crop' }, // Malina
-    { id: 'g2', name: 'Goose',     latitude: 41.6315, longitude: 24.6582, sport: 'SKI', speed: 82, peakGForce: 2.8, crashes: 0, avatarUri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop' }, // Stoikite
-    { id: 'g3', name: 'Iceman',    latitude: 41.6398, longitude: 24.6845, sport: 'SKI', speed: 88, peakGForce: 4.5, crashes: 3, avatarUri: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&h=120&fit=crop' }, // Studenets
-    { id: 'g4', name: 'Phoenix',   latitude: 41.6280, longitude: 24.6770, sport: 'SKI', speed: 55, peakGForce: 2.1, crashes: 0, avatarUri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&h=120&fit=crop' }, // Smolyan Lakes Side
-    { id: 'g5', name: 'Viper',     latitude: 41.6385, longitude: 24.6795, sport: 'SKI', speed: 104, peakGForce: 5.1, crashes: 5, avatarUri: 'https://images.unsplash.com/photo-1506803682981-6e718a9dd3ee?w=120&h=120&fit=crop' }, // The Wall (Stena)
-    // User Clone for Testing Social Actions
-    { id: 'clone1', name: 'Vasil Clone', latitude: 41.6378, longitude: 24.6769, sport: 'SKI', speed: 0, peakGForce: 1.2, crashes: 0, avatarUri: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=120&h=120&fit=crop' }, // Snezhanka Peak 
+    { id: 'g1', name: 'Alex',    latitude: 41.6293, longitude: 24.6882, sport: 'SKI', speed: 52, peakGForce: 3.2, crashes: 1, avatarUri: require('../assets/images/avatar_alex.png'), level: 42, achievements: ['🥇', '🚀', '🔥'] },
+    { id: 'g2', name: 'Marta',   latitude: 41.6302, longitude: 24.6920, sport: 'SKI', speed: 48, peakGForce: 2.8, crashes: 0, avatarUri: require('../assets/images/avatar_marta.png'), level: 38, achievements: ['👑', '⚡️'] },
+    { id: 'g3', name: 'Boris',   latitude: 41.6318, longitude: 24.6840, sport: 'SKI', speed: 40, peakGForce: 2.1, crashes: 0, avatarUri: require('../assets/images/avatar_boris.png'), level: 25, achievements: ['🛡️'] },
+    { id: 'g4', name: 'Vanya',   latitude: 41.6285, longitude: 24.6858, sport: 'SKI', speed: 70, peakGForce: 4.5, crashes: 2, avatarUri: require('../assets/images/avatar_vanya.png'), level: 50, achievements: ['🏆', '💀', '💨'] },
+    { id: 'g5', name: 'YOU (CLONE)', latitude: 41.6350, longitude: 24.6800, sport: 'SKI', speed: 0, peakGForce: 1.0, crashes: 0, avatarUri: require('../assets/images/avatar_user.png'), level: 99, achievements: ['🚀'] },
   ],
+
+  squadStatus: { onlineCount: 5, totalCount: 5 },
 
   isEmergency: false,
   bleConnected: false,
   bleDeviceId: null,
   isDemoCentered: false,
+  glassesBattery: 100,
 
   // ── Actions ──
   setTheme: (theme) => set({ theme }),
@@ -119,9 +135,37 @@ export const useSentioStore = create<SentioState>((set) => ({
   removeHazard: (id) =>
     set((s) => ({ hazards: s.hazards.filter((h) => h.id !== id) })),
   setEmergency: (isEmergency) => set({ isEmergency }),
+  updateGhostRider: (id, data) =>
+    set((s) => ({
+      ghostRiders: s.ghostRiders.map((r) => r.id === id ? { ...r, ...data } : r),
+    })),
   setBleConnected: (bleConnected) => set({ bleConnected }),
   setBleDeviceId: (bleDeviceId) => set({ bleDeviceId }),
+  setGlassesBattery: (glassesBattery) => set({ glassesBattery }),
   
+  // ── Crash Actions ──
+  isCrashOverlayVisible: false,
+  crashCountdown: 10,
+  crashStatus: 'IDLE',
+  
+  triggerCrash: () => set({ 
+    isCrashOverlayVisible: true, 
+    crashCountdown: 10, 
+    crashStatus: 'COUNTDOWN' 
+  }),
+  cancelCrash: () => set({ 
+    isCrashOverlayVisible: false, 
+    crashStatus: 'CANCELLED',
+    crashCountdown: 10 
+  }),
+  tickCrash: () => set((state) => ({ 
+    crashCountdown: Math.max(0, state.crashCountdown - 1) 
+  })),
+  finishCrash: () => set({ 
+    crashStatus: 'SENT',
+    crashCountdown: 0
+  }),
+
   // Teleports all demo data from Pamporovo to the user's real physical GPS location
   centerDemoData: (lat: number, lng: number) => set((s) => {
     if (s.isDemoCentered) return s; // Only do this once per session

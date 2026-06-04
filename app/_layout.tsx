@@ -2,26 +2,25 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-
 import { useSentioStore } from '@/store/useSentioStore';
-import ModeSelector from '@/components/ModeSelector';
+import Mapbox from '@rnmapbox/maps';
+import SOSOverlay from '@/components/SOSOverlay';
+import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
+
+// Set Mapbox access token ONCE at the root module scope.
+// This guarantees the token is registered before any MapView renders on any screen.
+Mapbox.setAccessToken('pk.eyJ1IjoidmFzaWwtemhlbGV2IiwiYSI6ImNtbXZ5NnFjYTJkOWUyeXIwbmRjd2RkcTAifQ.c0735l2Vej_xd10i6Ol0SQ');
+Mapbox.setTelemetryEnabled(false);
 
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
 export default function RootLayout() {
-  const { theme, hasSelectedMode } = useSentioStore();
-
-  // Show mode selector before entering the app
-  if (!hasSelectedMode) {
-    return (
-      <>
-        <StatusBar style={theme === 'DARK' ? 'light' : 'dark'} />
-        <ModeSelector />
-      </>
-    );
-  }
+  const { theme } = useSentioStore();
+  
+  // Initialize BLE Scanner & connectivity
+  useSmartGlassesBLE();
 
   return (
     <ThemeProvider value={theme === 'DARK' ? DarkTheme : DefaultTheme}>
@@ -29,7 +28,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
-      <StatusBar style={theme === 'DARK' ? 'light' : 'dark'} />
+      <SOSOverlay />
+      <StatusBar style="light" />
     </ThemeProvider>
   );
 }

@@ -1,168 +1,130 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+} from 'react-native';
+import Mapbox from '@rnmapbox/maps';
+import TacticalBlur from '../../components/TacticalBlur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSentioStore } from '../../store/useSentioStore';
-import { THEMES, SPORT_PROFILES, UI } from '../../constants/Styles';
-import { useBLEBridge } from '../../hooks/useBLEBridge';
+import { getThemePalette, SPORT_PROFILES, UI, FONTS, TACTICAL_TAG } from '../../constants/Styles';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
-export default function Settings() {
+export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const store = useSentioStore();
-  const { theme, sportProfile, bleConnected } = store;
-  const t = THEMES[theme];
-  const p = SPORT_PROFILES[sportProfile];
-  const { scanForDevices } = useBLEBridge();
+  const { theme, setTheme, sportProfile, setSportProfile, bleConnected, glassesBattery } = useSentioStore();
+  const palette = useMemo(() => getThemePalette(sportProfile, theme), [sportProfile, theme]);
 
-  const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  const toggleTheme = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setTheme(theme === 'DARK' ? 'LIGHT' : 'DARK');
+  };
+
+  const toggleSport = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSportProfile(sportProfile === 'SKI' ? 'MOTOCROSS' : 'SKI');
+  };
 
   return (
-    <View style={[styles.root, { backgroundColor: t.background, paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.title, { color: t.text }]}>SETTINGS</Text>
+    <View style={styles.root}>
+      {/* ── BACKGROUND ── */}
+      <Mapbox.MapView
+        style={StyleSheet.absoluteFillObject}
+        styleURL={theme === 'DARK' ? Mapbox.StyleURL.Dark : Mapbox.StyleURL.Light}
+        logoEnabled={false}
+        attributionEnabled={false}
+      >
+        <Mapbox.Camera zoomLevel={10} centerCoordinate={[24.6946, 41.6504]} pitch={30} />
+      </Mapbox.MapView>
 
-        {/* ── Appearance ── */}
-        <Section label="APPEARANCE" t={t}>
-          <Card t={t}>
-            <Row label="Theme" value={theme === 'DARK' ? '🌙 Dark' : '☀️ Light'} t={t} />
-            <Btn label={theme === 'DARK' ? 'Switch to Light' : 'Switch to Dark'}
-              bg={p.accent} onPress={() => { tap(); store.toggleTheme(); }} />
-          </Card>
-        </Section>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 20 }]} showsVerticalScrollIndicator={false}>
+        
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>CONFIG</Text>
+          <Text style={TACTICAL_TAG(palette)}>[ HUD SYSTEM PREFERENCES ]</Text>
+        </View>
 
-        {/* ── Sport ── */}
-        <Section label="SPORT PROFILE" t={t}>
-          <Card t={t}>
-            <View style={styles.rowBetween}>
-              <Text style={[styles.rowLabel, { color: t.text }]}>Active Mode</Text>
-              <View style={[styles.badge, { backgroundColor: p.accentSoft }]}>
-                <Text style={{ fontSize: 13 }}>{p.icon}</Text>
-                <Text style={[styles.badgeText, { color: p.accent }]}>{p.label}</Text>
-              </View>
-            </View>
-            <Btn
-              label={`Switch to ${sportProfile === 'MOTOCROSS' ? '🎿 Ski / Snow' : '🏍️ Moto / MTB'}`}
-              bg={p.accent}
-              onPress={() => { tap(); store.toggleSportProfile(); }}
-            />
-          </Card>
-        </Section>
+        {/* ── HARDWARE STATUS ── */}
+        <TacticalBlur tint="dark" intensity={UI.glassBlur} style={[styles.panel, UI.tacticalShadow, { borderColor: bleConnected ? palette.accent : 'rgba(255,255,255,0.15)' }]}>
+          <Text style={styles.panelTitle}>HARDWARE LINK</Text>
+          <SettingRow label="GLASSES CONNECTION" value={bleConnected ? "ACTIVE" : "SEARCHING..."} icon="bluetooth" isStatus statusColor={bleConnected ? palette.accent : '#8E8E93'} />
+          <SettingRow label="GLASSES BATTERY" value={`${glassesBattery}%`} icon={glassesBattery > 20 ? "battery-full" : "battery-dead"} isStatus statusColor={glassesBattery > 20 ? '#34C759' : '#FF3B30'} />
+          <SettingRow label="FIRMWARE" value="v2.1.0-ESP32" icon="hardware-chip" isStatus />
+        </TacticalBlur>
 
-        {/* ── Hardware ── */}
-        <Section label="HARDWARE" t={t}>
-          <Card t={t}>
-            <View style={styles.rowBetween}>
-              <Text style={[styles.rowLabel, { color: t.text }]}>Sentio HUD</Text>
-              <View style={styles.statusRow}>
-                <View style={[styles.statusDot, { backgroundColor: bleConnected ? '#34D399' : '#F87171' }]} />
-                <Text style={[styles.rowValue, { color: bleConnected ? '#34D399' : '#F87171' }]}>
-                  {bleConnected ? 'Connected' : 'Disconnected'}
-                </Text>
-              </View>
-            </View>
-            <Btn
-              label="🔄 Scan & Reconnect"
-              bg={t.surfaceAlt}
-              textColor={t.text}
-              border={t.border}
-              onPress={() => { tap(); scanForDevices(); }}
-            />
-          </Card>
-        </Section>
+        {/* ── DISPLAY PREFERENCES ── */}
+        <TacticalBlur tint="dark" intensity={UI.glassBlur} style={[styles.panel, UI.tacticalShadow, { marginTop: 20 }]}>
+          <Text style={styles.panelTitle}>HUD DISPLAY</Text>
+          <SettingRow label="TACTICAL THEME" value={theme} onPress={toggleTheme} icon={theme === 'DARK' ? 'moon' : 'sunny'} />
+          <SettingRow label="SPORT TRACKING" value={sportProfile} onPress={toggleSport} icon={sportProfile === 'SKI' ? 'snow' : 'bicycle'} />
+          <SettingRow label="METRIC UNITS" value="KM/H" onPress={() => {}} icon="speedometer" />
+          <SettingRow label="DISPLAY OPACITY" value="80%" onPress={() => {}} icon="contrast" />
+        </TacticalBlur>
 
-        {/* ── Mode Reset ── */}
-        <Section label="SESSION" t={t}>
-          <Card t={t}>
-            <Btn
-              label="🔁 Change Ride Mode"
-              bg={t.surfaceAlt}
-              textColor={t.text}
-              border={t.border}
-              onPress={() => { tap(); store.setHasSelectedMode(false); }}
-            />
-          </Card>
-        </Section>
+        {/* ── SAFETY & SOS ── */}
+        <TacticalBlur tint="dark" intensity={UI.glassBlur} style={[styles.panel, { marginTop: 20, borderColor: 'rgba(255,59,48,0.3)' }]}>
+          <Text style={[styles.panelTitle, { color: '#FF3B30' }]}>EMERGENCY PROTOCOL</Text>
+          <SettingRow label="CRASH SENSITIVITY" value="3.0G HIGH" onPress={() => {}} icon="warning" />
+          <SettingRow label="SOS COUNTDOWN" value="10s" onPress={() => {}} icon="timer" />
+          <SettingRow label="EMERGENCY CONTACTS" value="2 CONFIGURED" onPress={() => {}} icon="people" />
+        </TacticalBlur>
 
-        {/* ── About ── */}
-        <Section label="ABOUT" t={t}>
-          <Card t={t}>
-            <Text style={[styles.aboutText, { color: t.textSoft }]}>
-              Sentio v1.0.0{'\n'}
-              HUD Ecosystem for Extreme Athletes{'\n'}
-              BLE · GPS · IMU · Crash Detection
-            </Text>
-          </Card>
-        </Section>
+        <TouchableOpacity 
+          style={[styles.dangerBtn, UI.tacticalShadow]}
+          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
+        >
+          <Text style={styles.dangerText}>UNPAIR GLASSES</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.versionTag}>
+          SENTIO HUD // BUILT FOR EXTREME ENVIRONMENTS
+        </Text>
+
       </ScrollView>
     </View>
   );
 }
 
-// ── Reusable sub-components ──
-function Section({ label, t, children }: any) {
-  return (
-    <View style={{ marginBottom: 4 }}>
-      <Text style={[styles.section, { color: t.textSoft }]}>{label}</Text>
-      {children}
+function SettingRow({ label, value, onPress, icon, isStatus, statusColor }: any) {
+  const content = (
+    <View style={rowStyles.row}>
+      <View style={rowStyles.left}>
+        <Ionicons name={icon} size={20} color="#FFF" style={{ marginRight: 12 }} />
+        <Text style={rowStyles.label}>{label}</Text>
+      </View>
+      <Text style={[rowStyles.value, isStatus && statusColor && { color: statusColor }]}>{value}</Text>
     </View>
   );
-}
 
-function Card({ t, children }: any) {
-  return (
-    <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-      {children}
-    </View>
-  );
-}
+  if (isStatus) return content;
 
-function Row({ label, value, t }: any) {
   return (
-    <View style={styles.rowBetween}>
-      <Text style={[styles.rowLabel, { color: t.text }]}>{label}</Text>
-      <Text style={[styles.rowValue, { color: t.textSoft }]}>{value}</Text>
-    </View>
-  );
-}
-
-function Btn({ label, bg, textColor, border, onPress }: any) {
-  return (
-    <TouchableOpacity
-      style={[styles.cardBtn, { backgroundColor: bg, borderColor: border || 'transparent', borderWidth: border ? 1.5 : 0 }]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Text style={[styles.cardBtnText, { color: textColor || '#FFF' }]}>{label}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+      {content}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  scroll: { padding: UI.pagePadding, paddingBottom: 40 },
-  title: { fontSize: 24, fontWeight: '900', letterSpacing: 4, marginTop: 12, marginBottom: 28 },
-  section: { fontSize: 10, fontWeight: '800', letterSpacing: 3, marginBottom: 8, marginTop: 4 },
-  card: {
-    borderRadius: UI.borderRadius, borderWidth: 1,
-    padding: UI.cardPadding, marginBottom: 12,
-  },
-  rowBetween: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
-  },
-  rowLabel: { fontSize: 15, fontWeight: '700' },
-  rowValue: { fontSize: 13, fontWeight: '600' },
-  badge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 50,
-  },
-  badgeText: { fontSize: 11, fontWeight: '800' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  cardBtn: {
-    minHeight: 48, borderRadius: UI.borderRadiusSm,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cardBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
-  aboutText: { fontSize: 13, lineHeight: 20 },
+  root: { flex: 1, backgroundColor: '#000' },
+  scroll: { padding: UI.pagePadding, paddingBottom: 100 },
+  header: { alignItems: 'flex-start', marginBottom: 32 },
+  headerTitle: { color: '#FFF', fontSize: 28, fontWeight: '900', letterSpacing: 6, fontFamily: FONTS.sans, marginBottom: 8 },
+  panel: { padding: 24, borderRadius: UI.borderRadius, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
+  panelTitle: { fontSize: 10, color: '#8E8E93', fontWeight: '800', letterSpacing: 2, marginBottom: 20, fontFamily: FONTS.mono },
+  dangerBtn: { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 1, borderColor: '#DC2626', borderRadius: 12, padding: 20, alignItems: 'center', marginTop: 40 },
+  dangerText: { color: '#DC2626', fontWeight: '900', letterSpacing: 1, fontFamily: FONTS.sans },
+  versionTag: { marginTop: 40, textAlign: 'center', fontSize: 9, fontFamily: FONTS.mono, color: '#8E8E93', letterSpacing: 2 },
+});
+
+const rowStyles = StyleSheet.create({
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  left: { flexDirection: 'row', alignItems: 'center' },
+  label: { color: '#FFF', fontSize: 13, fontWeight: '700', fontFamily: FONTS.sans },
+  value: { color: '#8E8E93', fontSize: 13, fontWeight: '900', fontFamily: FONTS.technical },
 });
