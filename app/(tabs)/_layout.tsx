@@ -65,6 +65,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="glasses"
+        options={{
+          title: 'GLASSES',
+          tabBarIcon: ({ color }) => (
+            <Ionicons size={22} name="glasses-outline" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="explore"
         options={{
           title: 'SYSTEM',

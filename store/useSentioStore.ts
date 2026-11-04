@@ -77,6 +77,17 @@ interface SentioState {
   cancelCrash: () => void;
   tickCrash: () => void;
   finishCrash: () => void;
+
+  // ── Glasses Notifications ──
+  notificationVisible: boolean;
+  notificationText: string;
+  setNotification: (text: string) => void;
+  clearNotification: () => void;
+
+  // ── BLE Connection Log (last 30 entries) ──
+  bleLog: string[];
+  addBleLog: (entry: string) => void;
+  clearBleLog: () => void;
 }
 
 export const useSentioStore = create<SentioState>((set) => ({
@@ -165,6 +176,19 @@ export const useSentioStore = create<SentioState>((set) => ({
     crashStatus: 'SENT',
     crashCountdown: 0
   }),
+
+  // ── Glasses Notifications ──
+  notificationVisible: false,
+  notificationText: '',
+  setNotification: (notificationText) => set({ notificationVisible: true, notificationText }),
+  clearNotification: () => set({ notificationVisible: false, notificationText: '' }),
+
+  // ── BLE Log ──
+  bleLog: [],
+  addBleLog: (entry) => set((s) => ({
+    bleLog: [`${new Date().toLocaleTimeString('en-GB', { hour12: false })} ${entry}`, ...s.bleLog].slice(0, 30),
+  })),
+  clearBleLog: () => set({ bleLog: [] }),
 
   // Teleports all demo data from Pamporovo to the user's real physical GPS location
   centerDemoData: (lat: number, lng: number) => set((s) => {

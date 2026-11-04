@@ -5,7 +5,9 @@ import 'react-native-reanimated';
 import { useSentioStore } from '@/store/useSentioStore';
 import Mapbox from '@rnmapbox/maps';
 import SOSOverlay from '@/components/SOSOverlay';
+import GlassesNotification from '@/components/GlassesNotification';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
+import { useOtaUpdates } from '@/hooks/useOtaUpdates';
 
 // Set Mapbox access token ONCE at the root module scope.
 // This guarantees the token is registered before any MapView renders on any screen.
@@ -19,8 +21,11 @@ export const unstable_settings = {
 export default function RootLayout() {
   const { theme } = useSentioStore();
   
-  // Initialize BLE Scanner & connectivity
+  // Initialize BLE Scanner & connectivity (singleton — used across all tabs)
   useSmartGlassesBLE();
+
+  // Pull over-the-air JS updates published with `eas update`
+  useOtaUpdates();
 
   return (
     <ThemeProvider value={theme === 'DARK' ? DarkTheme : DefaultTheme}>
@@ -29,6 +34,7 @@ export default function RootLayout() {
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <SOSOverlay />
+      <GlassesNotification />
       <StatusBar style="light" />
     </ThemeProvider>
   );

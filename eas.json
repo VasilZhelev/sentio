@@ -9,16 +9,27 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "production"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production"
+    },
+    "unsigned": {
+      "ios": {
+        "config": "unsigned-ios.yml",
+        "withoutCredentials": true,
+        "simulator": false
+      },
+      "channel": "production"
     }
   },
   "submit": {

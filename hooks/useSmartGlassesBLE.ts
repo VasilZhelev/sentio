@@ -1,214 +1,466 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Platform, PermissionsAndroid } from 'react-native';
-import { BleManager, Characteristic, Device, Subscription } from 'react-native-ble-plx';
+import { BleManager, Device, BleError, Characteristic, State } from 'react-native-ble-plx';
 import { useSentioStore } from '../store/useSentioStore';
 import * as Haptics from 'expo-haptics';
 
-// --- Lightweight Base64 Polyfill for pure RN ---
-const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-const btoa = (input: string = '') => {
-  let str = input; let output = '';
-  for (let block = 0, charCode, i = 0, map = chars; str.charAt(i | 0) || (map = '=', i % 1); output += map.charAt(63 & block >> 8 - i % 1 * 8)) {
-    charCode = str.charCodeAt(i += 3/4);
-    if (charCode > 0xFF) console.warn("btoa string not ASCII");
-    block = block << 8 | charCode;
-  }
-  return output;
-};
-const atob = (input: string = '') => {
-  let str = input.replace(/=+$/, ''); let output = '';
-  if (str.length % 4 == 1) console.warn("atob invalid length");
-  for (let bc = 0, bs = 0, buffer, i = 0; buffer = str.charAt(i++); ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer, bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0) {
-    buffer = chars.indexOf(buffer);
-  }
-  return output;
+// ─── Nordic UART Service (NUS) — matches ESP32 firmware ──────────────────────
+const SENTIO_DEVICE_NAME    = 'Sentio_Glasses';
+const NUS_SERVICE_UUID      = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
+const NUS_TX_CHARACTERISTIC = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'; // Notify: ESP32 → App
+const NUS_RX_CHARACTERISTIC = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'; // Write:  App → ESP32
+
+export type DiscoveredBleDevice = {
+  id: string;
+  name: string;
+  rssi: number | null;
 };
 
-// Use same UUIDs as defined in our Protocol Spec
-const SENTIO_DEVICE_NAME = 'SENTIO_GLASSES';
-const SENTIO_SERVICE_UUID = '87654321-4321-4321-4321-1234567890AB';
-const CRASH_CHARACTERISTIC_UUID = '87654321-4321-4321-4321-1234567890A1';
-const GFORCE_CHARACTERISTIC_UUID = '87654321-4321-4321-4321-1234567890A2';
-const COMMAND_CHARACTERISTIC_UUID = '87654321-4321-4321-4321-1234567890A3';
+// ─── Base64 helpers ───────────────────────────────────────────────────────────
+function toBase64(str: string): string {
+  try { return btoa(unescape(encodeURIComponent(str))); }
+  catch { try { return btoa(str); } catch { return ''; } }
+}
+function fromBase64(b64: string): string {
+  try { return decodeURIComponent(escape(atob(b64))); }
+  catch { try { return atob(b64); } catch { return ''; } }
+}
 
-const bleManager = new BleManager();
+function deviceLabel(device: Device): string {
+  return device.name ?? device.localName ?? 'Unknown device';
+}
 
-export function useSmartGlassesBLE() {
-  const [device, setDevice] = useState<Device | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  
-  const { 
-    setBleConnected, 
-    triggerCrash, 
-    updateTelemetry,
-    setGlassesBattery,
-    bleConnected
-  } = useSentioStore();
+function isSentioGlasses(device: Device): boolean {
+  const names = [device.name, device.localName]
+    .filter(Boolean)
+    .map(n => n!.toLowerCase());
 
-  const scanSubscription = useRef<Subscription | null>(null);
+  const nameMatch = names.some(
+    n => n === SENTIO_DEVICE_NAME.toLowerCase()
+      || (n.includes('sentio') && n.includes('glasses'))
+  );
 
-  useEffect(() => {
-    // Attempt auto-connect on mount if not connected
-    if (!bleConnected && !isScanning) {
-      requestPermissionsAndScan();
+  const uuidMatch = (device.serviceUUIDs ?? []).some(
+    uuid => uuid.toUpperCase() === NUS_SERVICE_UUID.toUpperCase()
+  );
+
+  return nameMatch || uuidMatch;
+}
+
+// ─── Android BLE Permissions ──────────────────────────────────────────────────
+async function requestBlePermissions(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+
+  const permissions: string[] = [
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+  ];
+
+  if (Platform.Version >= 31) {
+    permissions.push(
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+    );
+  }
+
+  const granted = await PermissionsAndroid.requestMultiple(permissions);
+  const results = Object.values(granted);
+  const allGranted = results.every(v => v === PermissionsAndroid.RESULTS.GRANTED);
+
+  if (!allGranted) {
+    console.warn('[BLE] Some permissions denied:', granted);
+    if (Platform.Version >= 31) {
+      const scanOk = granted[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN]
+        === PermissionsAndroid.RESULTS.GRANTED;
+      const connectOk = granted[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]
+        === PermissionsAndroid.RESULTS.GRANTED;
+      return scanOk && connectOk;
+    }
+    return granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION]
+      === PermissionsAndroid.RESULTS.GRANTED;
+  }
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE-LEVEL SINGLETONS — idempotent across multiple hook invocations
+// ─────────────────────────────────────────────────────────────────────────────
+let _manager:       BleManager | null = null;
+let _device:        Device | null = null;
+let _isScanning:    boolean = false;
+let _scanLock:      boolean = false;
+let _connecting:    boolean = false;
+let _speedInterval: ReturnType<typeof setInterval> | null = null;
+let _timeInterval:  ReturnType<typeof setInterval> | null = null;
+let _initialized:   boolean = false;
+let _stateListener: boolean = false;
+let _scanTimeout:   ReturnType<typeof setTimeout> | null = null;
+
+type ScanListener = (scanning: boolean) => void;
+const _scanListeners = new Set<ScanListener>();
+
+type DiscoveredListener = (devices: DiscoveredBleDevice[]) => void;
+const _discoveredListeners = new Set<DiscoveredListener>();
+const _discoveredMap = new Map<string, DiscoveredBleDevice>();
+
+function notifyScanListeners(v: boolean) {
+  _isScanning = v;
+  _scanListeners.forEach(fn => fn(v));
+}
+
+function notifyDiscoveredListeners() {
+  const list = Array.from(_discoveredMap.values()).sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999));
+  _discoveredListeners.forEach(fn => fn(list));
+}
+
+function getManager(): BleManager {
+  if (!_manager) _manager = new BleManager();
+  return _manager;
+}
+
+function clearIntervals() {
+  if (_speedInterval) { clearInterval(_speedInterval); _speedInterval = null; }
+  if (_timeInterval) { clearInterval(_timeInterval); _timeInterval = null; }
+}
+
+function ensureBluetoothStateListener() {
+  if (_stateListener) return;
+  _stateListener = true;
+
+  getManager().onStateChange((state: State) => {
+    const store = useSentioStore.getState();
+    if (state === 'PoweredOn') {
+      if (!_device && !_scanLock && !_connecting) {
+        store.addBleLog('✅ Bluetooth ready — scanning');
+        _scanForDevices();
+      }
+    } else if (state === 'PoweredOff') {
+      store.setBleConnected(false);
+      store.addBleLog('⏳ Bluetooth off — turn it on');
+    }
+  }, true);
+}
+
+// ─── Write a string to ESP32 RX characteristic (without response per firmware) ─
+async function _sendRaw(text: string): Promise<boolean> {
+  if (!_device) { console.warn('[BLE] sendRaw: no device'); return false; }
+  const ble = getManager();
+  const payload = toBase64(text);
+
+  try {
+    await ble.writeCharacteristicWithoutResponseForDevice(
+      _device.id,
+      NUS_SERVICE_UUID,
+      NUS_RX_CHARACTERISTIC,
+      payload
+    );
+    console.log(`[BLE → glasses] "${text}"`);
+    useSentioStore.getState().addBleLog(`→ ${text}`);
+    return true;
+  } catch (err) {
+    // Fallback for firmware builds that only accept write-with-response
+    try {
+      await ble.writeCharacteristicWithResponseForDevice(
+        _device.id,
+        NUS_SERVICE_UUID,
+        NUS_RX_CHARACTERISTIC,
+        payload
+      );
+      console.log(`[BLE → glasses] "${text}" (with response)`);
+      useSentioStore.getState().addBleLog(`→ ${text}`);
+      return true;
+    } catch (fallbackErr) {
+      console.warn('[BLE] Write failed:', fallbackErr);
+      return false;
+    }
+  }
+}
+
+// ─── Handle incoming messages from ESP32 ─────────────────────────────────────
+function _handleIncoming(raw: string) {
+  const msg = raw.trim();
+  console.log(`[BLE ← glasses] "${msg}"`);
+  const store = useSentioStore.getState();
+  store.addBleLog(`← ${msg}`);
+
+  if (msg === 'CRASH_ALERT') {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    store.triggerCrash();
+  }
+  if (msg === 'TRIGGER_SOS') {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    store.finishCrash();
+  }
+  if (msg.startsWith('GFORCE:')) {
+    const g = parseFloat(msg.replace('GFORCE:', ''));
+    if (!isNaN(g)) store.updateTelemetry({ gForce: g });
+  }
+  if (msg.startsWith('BAT:')) {
+    const b = parseInt(msg.replace('BAT:', ''), 10);
+    if (!isNaN(b)) store.setGlassesBattery(b);
+  }
+}
+
+function _stopScan() {
+  const ble = getManager();
+  try { ble.stopDeviceScan(); } catch { /* ignore */ }
+  notifyScanListeners(false);
+  if (_scanTimeout) {
+    clearTimeout(_scanTimeout);
+    _scanTimeout = null;
+  }
+}
+
+// ─── Connect to a discovered device & subscribe ───────────────────────────────
+async function _connectAndListen(deviceOrId: Device | string) {
+  if (_connecting || _device) return;
+  _connecting = true;
+  _stopScan();
+  _scanLock = false;
+
+  const ble = getManager();
+  const deviceId = typeof deviceOrId === 'string' ? deviceOrId : deviceOrId.id;
+  const label = typeof deviceOrId === 'string'
+    ? (_discoveredMap.get(deviceId)?.name ?? deviceId)
+    : deviceLabel(deviceOrId);
+
+  try {
+    useSentioStore.getState().addBleLog(`🔗 Connecting to ${label}...`);
+
+    const connected = await ble.connectToDevice(deviceId, {
+      autoConnect: false,
+      timeout: 20000,
+    });
+    _device = connected;
+
+    await connected.discoverAllServicesAndCharacteristics();
+
+    // MTU negotiation is optional — don't fail the connection if it errors
+    try {
+      await connected.requestMTU(512);
+    } catch {
+      console.log('[BLE] MTU 512 not negotiated — continuing');
     }
 
-    return () => {
-      bleManager.stopDeviceScan();
-      scanSubscription.current?.remove();
-    };
-  }, []);
+    const store = useSentioStore.getState();
+    store.setBleConnected(true);
+    store.setBleDeviceId(connected.id);
+    store.addBleLog(`✅ Connected to ${label}`);
+    console.log(`[BLE] ✅ Connected to ${label} (${connected.id})`);
 
-  const requestPermissionsAndScan = async () => {
-    try {
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-        ]);
-        
-        const allGranted = Object.values(granted).every(
-          (status) => status === PermissionsAndroid.RESULTS.GRANTED
-        );
-        
-        if (!allGranted) {
-          console.warn('BLE permissions not granted');
+    connected.monitorCharacteristicForService(
+      NUS_SERVICE_UUID,
+      NUS_TX_CHARACTERISTIC,
+      (_err: BleError | null, char: Characteristic | null) => {
+        if (_err) {
+          if ((_err as any).errorCode !== 205) {
+            console.warn('[BLE] Monitor error:', _err.message);
+          }
           return;
         }
+        if (char?.value) _handleIncoming(fromBase64(char.value));
       }
-      
-      scanAndConnect();
-    } catch (err) {
-      console.warn('Failed to request BLE permissions', err);
-    }
-  };
+    );
 
-  const scanAndConnect = () => {
-    // Ensure BLE is PoweredOn before scanning
-    bleManager.state().then((state) => {
-      if (state === 'PoweredOn') {
-        startScanning();
-      } else {
-        const sub = bleManager.onStateChange((newState) => {
-          if (newState === 'PoweredOn') {
-            sub.remove();
-            startScanning();
-          }
-        }, true);
-      }
+    if (_speedInterval) clearInterval(_speedInterval);
+    _speedInterval = setInterval(() => {
+      const spd = useSentioStore.getState().telemetry.speed;
+      _sendRaw(`SPD:${spd}`);
+    }, 2000);
+
+    const sendTime = () => {
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      _sendRaw(`TIM:${timeStr}`);
+    };
+    if (_timeInterval) clearInterval(_timeInterval);
+    _timeInterval = setInterval(sendTime, 60000);
+    setTimeout(sendTime, 1000);
+
+    ble.onDeviceDisconnected(connected.id, () => {
+      console.log('[BLE] ⚠️ Disconnected');
+      const s = useSentioStore.getState();
+      s.setBleConnected(false);
+      s.setBleDeviceId(null);
+      s.addBleLog('⚠️ Disconnected — retrying in 3s');
+      _device = null;
+      _connecting = false;
+      clearIntervals();
+      setTimeout(() => _scanForDevices(), 3000);
     });
-  };
 
-  const startScanning = () => {
-    if (isScanning) return;
-    setIsScanning(true);
-    
-    bleManager.startDeviceScan(null, null, async (error, scannedDevice) => {
+  } catch (err: any) {
+    console.error('[BLE] Connection failed:', err?.message ?? err);
+    useSentioStore.getState().setBleConnected(false);
+    useSentioStore.getState().addBleLog(`❌ Connect failed: ${err?.message ?? 'unknown'}`);
+    _device = null;
+    try { await ble.cancelDeviceConnection(deviceId); } catch { /* ignore */ }
+    setTimeout(() => _scanForDevices(), 5000);
+  } finally {
+    _connecting = false;
+  }
+}
+
+// ─── Scan for Sentio_Glasses ──────────────────────────────────────────────────
+async function _scanForDevices() {
+  if (_device || _scanLock || _connecting) return;
+  _scanLock = true;
+
+  try {
+    ensureBluetoothStateListener();
+
+    const hasPermission = await requestBlePermissions();
+    if (!hasPermission) {
+      useSentioStore.getState().addBleLog('❌ Bluetooth permissions denied — check app settings');
+      _scanLock = false;
+      return;
+    }
+
+    const ble = getManager();
+    _stopScan();
+    await new Promise(r => setTimeout(r, 300));
+
+    if (_device) {
+      _scanLock = false;
+      return;
+    }
+
+    const state = await ble.state();
+    if (state !== 'PoweredOn') {
+      _scanLock = false;
+      if (state === 'Unauthorized') {
+        // iOS: user denied Bluetooth access — the onStateChange listener resumes once it's granted
+        useSentioStore.getState().addBleLog('❌ Bluetooth access denied — enable it in Settings › Sentio');
+      } else if (state === 'Unknown' || state === 'Resetting') {
+        // iOS reports Unknown for a moment after BleManager is created (and while the permission prompt is open)
+        console.log('[BLE] State', state, '— retrying shortly');
+        setTimeout(() => _scanForDevices(), 1000);
+      } else {
+        useSentioStore.getState().addBleLog('⏳ Bluetooth off — waiting...');
+        console.log('[BLE] Waiting for PoweredOn...');
+      }
+      return;
+    }
+
+    _discoveredMap.clear();
+    notifyDiscoveredListeners();
+
+    notifyScanListeners(true);
+    useSentioStore.getState().addBleLog(`🔍 Scanning for "${SENTIO_DEVICE_NAME}"...`);
+    console.log(`[BLE] 🔍 Scanning for "${SENTIO_DEVICE_NAME}"...`);
+
+    const scanOptions = Platform.OS === 'android'
+      ? { allowDuplicates: true }
+      : { allowDuplicates: false };
+
+    const onDeviceFound = (error: BleError | null, scannedDevice: Device | null) => {
       if (error) {
-        console.warn('BLE Scan Error:', error.message);
-        setIsScanning(false);
+        console.warn('[BLE] Scan error:', error.message, 'code:', (error as any).errorCode);
+        useSentioStore.getState().addBleLog(`❌ Scan error: ${error.message}`);
+        _stopScan();
+        _scanLock = false;
+        setTimeout(() => _scanForDevices(), 3000);
         return;
       }
 
-      // Check if it's our glasses
-      if (scannedDevice && scannedDevice.name === SENTIO_DEVICE_NAME) {
-        bleManager.stopDeviceScan();
-        setIsScanning(false);
-        connectToDevice(scannedDevice);
+      if (!scannedDevice) return;
+
+      const label = deviceLabel(scannedDevice);
+      const prev = _discoveredMap.get(scannedDevice.id);
+      if (!prev || prev.rssi !== scannedDevice.rssi) {
+        _discoveredMap.set(scannedDevice.id, {
+          id: scannedDevice.id,
+          name: label,
+          rssi: scannedDevice.rssi,
+        });
+        notifyDiscoveredListeners();
       }
-    });
-  };
 
-  const connectToDevice = async (d: Device) => {
-    try {
-      const connectedDevice = await d.connect();
-      setDevice(connectedDevice);
-      
-      const deviceWithServices = await connectedDevice.discoverAllServicesAndCharacteristics();
-      
-      setBleConnected(true);
-      
-      // Start listening to the Crash Characteristic (Notify)
-      deviceWithServices.monitorCharacteristicForService(
-        SENTIO_SERVICE_UUID,
-        CRASH_CHARACTERISTIC_UUID,
-        (error, characteristic) => {
-          if (error) {
-            // Log it but don't show red screens to user if it's just a disconnect
-            console.log('Crash Characteristic Monitor:', error.message);
-            return;
-          }
-          if (characteristic?.value) {
-            // Buffer base64 conversion depending on format
-            // If the ESP sends "0x01" or "CRASH", trigger:
-            console.log('Crash event received from glasses!');
-            triggerCrash();
-          }
-        }
-      );
+      if (scannedDevice.name || scannedDevice.localName) {
+        console.log(`[BLE] 📶 "${label}" (${scannedDevice.id}) RSSI=${scannedDevice.rssi}`);
+      }
 
-      // Start listening to the G-Force Characteristic (Notify)
-      deviceWithServices.monitorCharacteristicForService(
-        SENTIO_SERVICE_UUID,
-        GFORCE_CHARACTERISTIC_UUID,
-        (error, characteristic) => {
-          if (error) {
-            console.log('Telemetry Characteristic Monitor:', error.message);
-            return;
-          }
-          if (characteristic?.value) {
-             try {
-               // Decode base64 to string, expecting "1.50,87"
-               const decoded = atob(characteristic.value);
-               const parts = decoded.split(',');
-               if (parts.length >= 2) {
-                 const g = parseFloat(parts[0]);
-                 const b = parseInt(parts[1], 10);
-                 if (!isNaN(g)) updateTelemetry({ gForce: g });
-                 if (!isNaN(b)) setGlassesBattery(b);
-               }
-             } catch (err) {
-               console.warn("Failed to parse telemetry:", err);
-             }
-          }
-        }
-      );
+      if (isSentioGlasses(scannedDevice)) {
+        _stopScan();
+        _scanLock = false;
+        useSentioStore.getState().addBleLog(`📡 Found ${label} — connecting...`);
+        _connectAndListen(scannedDevice);
+      }
+    };
 
-      // Listen for disconnection
-      const sub = bleManager.onDeviceDisconnected(deviceWithServices.id, () => {
-        setBleConnected(false);
-        setDevice(null);
-        scanAndConnect(); // Reconnect loop
-      });
-      scanSubscription.current = sub;
+    // Broad scan — matches by device name (Sentio_Glasses) or NUS service UUID
+    ble.startDeviceScan(null, scanOptions, onDeviceFound);
 
-    } catch (e) {
-      console.log('BLE Connection Failed', e);
-      setBleConnected(false);
+    _scanTimeout = setTimeout(() => {
+      if (_isScanning && !_device && !_connecting) {
+        _stopScan();
+        _scanLock = false;
+        useSentioStore.getState().addBleLog('⏱ Scan timed out — retrying in 5s...');
+        setTimeout(() => _scanForDevices(), 5000);
+      }
+    }, 30000);
+
+  } catch (err: any) {
+    console.warn('[BLE] scanForDevices exception:', err?.message ?? err);
+    _stopScan();
+    _scanLock = false;
+    setTimeout(() => _scanForDevices(), 5000);
+  }
+}
+
+async function _connectById(deviceId: string) {
+  if (_device || _connecting) return;
+  _scanLock = false;
+  await _connectAndListen(deviceId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOOK — safe to call from multiple components
+// ─────────────────────────────────────────────────────────────────────────────
+export function useSmartGlassesBLE() {
+  const [isScanning, setIsScanning] = useState(_isScanning);
+  const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredBleDevice[]>(
+    Array.from(_discoveredMap.values())
+  );
+
+  useEffect(() => {
+    _scanListeners.add(setIsScanning);
+    _discoveredListeners.add(setDiscoveredDevices);
+    return () => {
+      _scanListeners.delete(setIsScanning);
+      _discoveredListeners.delete(setDiscoveredDevices);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!_initialized) {
+      _initialized = true;
+      _scanForDevices();
     }
-  };
+  }, []);
 
-  // Helper function to send commands back to glasses display
-  const sendCommandToDisplay = async (jsonData: string) => {
-    if (!device || !bleConnected) return;
-
-    try {
-      const b64 = btoa(jsonData);
-      await device.writeCharacteristicWithResponseForService(
-        SENTIO_SERVICE_UUID,
-        COMMAND_CHARACTERISTIC_UUID,
-        b64
-      );
-    } catch (e) {
-      console.warn('Write error:', e);
-    }
-  };
+  const sendCancel          = useCallback(() => _sendRaw('CANCEL'), []);
+  const sendMessage         = useCallback((text: string) => {
+    useSentioStore.getState().setNotification(text);
+    return _sendRaw(`MSG:${text}`);
+  }, []);
+  const sendCommandToDisplay = useCallback((jsonData: string) => _sendRaw(jsonData), []);
+  const sendBatteryLevel     = useCallback((level: number) => _sendRaw(`BAT:${Math.max(0, Math.min(100, Math.round(level)))}`), []);
+  const scanForDevices       = useCallback(() => {
+    _scanLock = false;
+    _connecting = false;
+    return _scanForDevices();
+  }, []);
+  const connectToDevice      = useCallback((deviceId: string) => _connectById(deviceId), []);
 
   return {
-    device,
     isScanning,
-    scanAndConnect,
-    sendCommandToDisplay
+    discoveredDevices,
+    scanForDevices,
+    connectToDevice,
+    sendCancel,
+    sendMessage,
+    sendBatteryLevel,
+    sendCommandToDisplay,
   };
 }
