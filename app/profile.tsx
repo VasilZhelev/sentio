@@ -3,7 +3,7 @@ import { View, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, Avatar, Surface, IconButton, SectionHeader, PressableScale } from '@/components/ui';
+import { Text, Avatar, IconButton, SectionHeader, PressableScale } from '@/components/ui';
 import { MapImage, Scrim, ProgressRing, BadgeMedal } from '@/components/fun';
 import { useSentioStore } from '@/store/useSentioStore';
 import { useSocialStore, xpForLevel } from '@/store/useSocialStore';
@@ -75,7 +75,7 @@ export default function ProfileScreen() {
             { v: '18.4k', l: 'Vertical m' },
           ].map((s) => (
             <View key={s.l} style={{ alignItems: 'center', flex: 1 }}>
-              <Text variant="headline" tabular style={{ fontSize: 22 }}>
+              <Text variant="display" tabular style={{ fontSize: 34, lineHeight: 36 }}>
                 {s.v}
               </Text>
               <Text variant="caption" tone="secondary">
@@ -86,7 +86,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* streak */}
-        <Surface style={{ gap: space.md, borderColor: fun.flame + '55' }}>
+        <View style={{ gap: space.lg }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
             <View style={[styles.flame, { backgroundColor: fun.flame + '22' }]}>
               <Ionicons name="flame" size={26} color={fun.flame} />
@@ -114,7 +114,7 @@ export default function ProfileScreen() {
               );
             })}
           </View>
-        </Surface>
+        </View>
 
         {/* badges */}
         <View style={{ gap: space.md }}>

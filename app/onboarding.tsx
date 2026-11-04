@@ -11,10 +11,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { SPORTS, type IconName } from '@/constants/sports';
 import { MapImage, Scrim } from '@/components/fun';
 import { sceneUrl } from '@/lib/mapbox';
-import { radius, space } from '@/constants/tokens';
+import { space } from '@/constants/tokens';
 import { haptic } from '@/lib/haptics';
 
 const STEPS = 4;
+const SPORT_SCENES = {
+  SKI: { center: { lat: 41.6452, lng: 24.6775 }, zoom: 13.6, bearing: 165 },
+  MOTOCROSS: { center: { lat: 41.6135, lng: 24.7105 }, zoom: 14.2, bearing: 40 },
+} as const;
 
 export default function Onboarding() {
   const { colors } = useTheme();
@@ -126,18 +130,25 @@ function PickSport({ onNext }: { onNext: () => void }) {
                 accessibilityRole="radio"
                 accessibilityState={{ checked: selected }}
                 accessibilityLabel={s.label}
-                style={[styles.sportCard, { backgroundColor: selected ? colors.accentSoft : colors.surface, borderColor: selected ? colors.accent : colors.border }]}
+                scaleTo={0.98}
+                style={[styles.sportTile, { borderColor: selected ? colors.accent : 'transparent' }]}
               >
-                <View style={[styles.sportIcon, { backgroundColor: selected ? colors.accent : colors.surfaceRaised }]}>
-                  <Ionicons name={s.icon} size={28} color={selected ? colors.onAccent : colors.text} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text variant="headline">{s.label}</Text>
-                  <Text variant="callout" tone="secondary">
-                    {s.description}
-                  </Text>
-                </View>
-                <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={selected ? colors.accent : colors.textTertiary} />
+                <MapImage uri={sceneUrl(SPORT_SCENES[key].center, { zoom: SPORT_SCENES[key].zoom, bearing: SPORT_SCENES[key].bearing, pitch: 60, width: 420, height: 220 })} style={styles.sportImage}>
+                  <Scrim height="75%" to={0.85} />
+                  <View style={styles.sportCaption}>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="title" color="#fff" style={{ fontSize: 26, lineHeight: 30 }}>
+                        {s.label}
+                      </Text>
+                      <Text variant="callout" color="rgba(255,255,255,0.78)">
+                        {s.description}
+                      </Text>
+                    </View>
+                    <View style={[styles.check, { backgroundColor: selected ? colors.accent : 'rgba(255,255,255,0.18)' }]}>
+                      {selected ? <Ionicons name="checkmark" size={20} color={colors.onAccent} /> : <Ionicons name={s.icon} size={18} color="#fff" />}
+                    </View>
+                  </View>
+                </MapImage>
               </PressableScale>
             );
           })}
@@ -233,6 +244,8 @@ const styles = StyleSheet.create({
   hero: { position: 'absolute', top: 0, left: 0, right: 0, height: '55%' },
   progress: { flexDirection: 'row', gap: 6, marginBottom: space.lg },
   progressSeg: { flex: 1, height: 4, borderRadius: 2 },
-  sportCard: { flexDirection: 'row', alignItems: 'center', gap: space.lg, padding: space.lg, borderRadius: radius.lg, borderWidth: 1.5 },
-  sportIcon: { width: 56, height: 56, borderRadius: radius.md + 4, alignItems: 'center', justifyContent: 'center' },
+  sportTile: { borderRadius: 32, borderWidth: 3, padding: 3 },
+  sportImage: { height: 168, borderRadius: 28 },
+  sportCaption: { position: 'absolute', left: space.xl, right: space.lg, bottom: space.lg, flexDirection: 'row', alignItems: 'flex-end', gap: space.md },
+  check: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

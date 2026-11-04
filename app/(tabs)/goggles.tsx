@@ -3,6 +3,7 @@ import { View, StyleSheet, TextInput, Pressable, KeyboardAvoidingView, Platform 
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, useReducedMotion } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen, Text, Surface, Button, Chip, IconButton, ListGroup, ListRow, SegmentedControl, SectionHeader } from '@/components/ui';
+import type { IconName } from '@/constants/sports';
 import { useSentioStore } from '@/store/useSentioStore';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
 import { useTheme } from '@/hooks/useTheme';
@@ -38,29 +39,27 @@ export default function GogglesScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen title="Goggles" subtitle="Sentio Goggles" keyboardShouldPersistTaps="handled">
-        {/* ── Device hero ── */}
-        <Surface padding={space.xl} style={{ gap: space.xl }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
-            <DeviceOrb state={state} />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text variant="headline">{state === 'connected' ? 'Connected' : state === 'searching' ? 'Searching…' : 'Not connected'}</Text>
-              <Text variant="callout" tone="secondary">
-                {state === 'connected'
-                  ? 'Crash detection is active.'
-                  : 'Crash detection needs your goggles. Turn them on and keep them close.'}
-              </Text>
-            </View>
+        {/* ── Device hero: product-page style, centred ── */}
+        <View style={{ alignItems: 'center', gap: space.lg, paddingTop: space.md }}>
+          <DeviceOrb state={state} />
+          <View style={{ alignItems: 'center', gap: 6 }}>
+            <Text variant="title" align="center">
+              {state === 'connected' ? 'Connected' : state === 'searching' ? 'Searching…' : 'Not connected'}
+            </Text>
+            <Text variant="callout" tone="secondary" align="center" style={{ maxWidth: 290 }}>
+              {state === 'connected' ? 'Crash detection is active. You’re covered.' : 'Crash detection needs your goggles. Turn them on and keep them close.'}
+            </Text>
           </View>
           {state === 'connected' ? (
-            <View style={{ flexDirection: 'row', gap: space.sm }}>
-              <Chip icon={battery > 20 ? 'battery-half-outline' : 'battery-dead-outline'} tone={battery > 20 ? 'neutral' : 'warning'} label={`${battery}%`} />
-              <Chip icon="hardware-chip-outline" label={firmware} />
-              <Chip icon="shield-checkmark-outline" tone="success" label="SOS ready" />
+            <View style={{ flexDirection: 'row', gap: space.xxl, marginTop: space.xs }}>
+              <HeroStat icon={battery > 20 ? 'battery-half' : 'battery-dead'} value={`${battery}%`} label="Battery" color={battery > 20 ? colors.text : colors.warning} />
+              <HeroStat icon="hardware-chip" value={firmware} label="Firmware" />
+              <HeroStat icon="shield-checkmark" value="Ready" label="SOS" color={colors.success} />
             </View>
           ) : (
-            <Button label={isScanning ? 'Searching…' : 'Search for goggles'} icon="bluetooth" loading={isScanning} onPress={() => scanForDevices()} fullWidth />
+            <Button label={isScanning ? 'Searching…' : 'Search for goggles'} icon="bluetooth" loading={isScanning} onPress={() => scanForDevices()} style={{ alignSelf: 'stretch' }} />
           )}
-        </Surface>
+        </View>
 
         {!bleConnected && discoveredDevices.length > 0 && (
           <ListGroup title="Nearby">
@@ -84,12 +83,12 @@ export default function GogglesScreen() {
           <Text variant="callout" tone="secondary" style={{ marginTop: -space.xs }}>
             Messages appear in your goggles for 4 seconds.
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, opacity: bleConnected ? 1 : 0.5 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, opacity: bleConnected ? 1 : 0.45 }}>
             {QUICK_MESSAGES.map((m) => (
               <Chip key={m} label={m} onPress={bleConnected ? () => send(m) : undefined} />
             ))}
           </View>
-          <View style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, opacity: bleConnected ? 1 : 0.5 }]}>
+          <View style={[styles.input, { backgroundColor: colors.surfaceSunken, opacity: bleConnected ? 1 : 0.45 }]}>
             <TextInput
               value={text}
               onChangeText={(t) => setText(t.slice(0, MAX_LEN))}
@@ -132,6 +131,21 @@ export default function GogglesScreen() {
   );
 }
 
+function HeroStat({ icon, value, label, color }: { icon: IconName; value: string; label: string; color?: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ alignItems: 'center', gap: 2 }} accessible accessibilityLabel={`${label} ${value}`}>
+      <Ionicons name={icon} size={18} color={color ?? colors.textSecondary} />
+      <Text variant="headline" tabular color={color} style={{ fontSize: 19 }}>
+        {value}
+      </Text>
+      <Text variant="caption" tone="tertiary">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function DeviceOrb({ state }: { state: 'connected' | 'searching' | 'offline' }) {
   const { colors } = useTheme();
   const reduced = useReducedMotion();
@@ -140,14 +154,15 @@ function DeviceOrb({ state }: { state: 'connected' | 'searching' | 'offline' }) 
     pulse.value = 0;
     if (state !== 'offline' && !reduced) pulse.value = withRepeat(withTiming(1, { duration: state === 'searching' ? 1000 : 2400, easing: Easing.out(Easing.quad) }), -1, false);
   }, [state, reduced, pulse]);
-  const ring = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.45 }], opacity: (1 - pulse.value) * 0.6 }));
+  const ring = useAnimatedStyle(() => ({ transform: [{ scale: 0.8 + pulse.value * 0.35 }], opacity: 1 - pulse.value }));
   const tint = state === 'connected' ? colors.success : state === 'searching' ? colors.accent : colors.textTertiary;
   const soft = state === 'connected' ? colors.successSoft : state === 'searching' ? colors.accentSoft : colors.surfaceSunken;
   return (
-    <View style={{ width: 64, height: 64, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={[StyleSheet.absoluteFill, { borderRadius: 32, borderWidth: 2, borderColor: tint }, ring]} />
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="glasses" size={30} color={tint} />
+    <View style={{ width: 168, height: 168, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: soft }, ring]} />
+      <View style={{ position: 'absolute', width: 132, height: 132, borderRadius: 66, backgroundColor: soft }} />
+      <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="glasses" size={52} color={tint} />
       </View>
     </View>
   );
@@ -215,6 +230,6 @@ function DeveloperSection() {
 }
 
 const styles = StyleSheet.create({
-  input: { flexDirection: 'row', alignItems: 'center', gap: space.sm, borderWidth: 1, borderRadius: radius.lg, paddingLeft: space.lg, paddingRight: 6, height: 56 },
+  input: { flexDirection: 'row', alignItems: 'center', gap: space.sm, borderRadius: radius.pill, paddingLeft: space.xl, paddingRight: 6, height: 56 },
   textInput: { flex: 1, fontSize: 16, height: '100%' },
 });

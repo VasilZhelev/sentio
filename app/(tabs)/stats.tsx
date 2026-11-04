@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Screen, Text, Surface, StatTile, Chip, SectionHeader } from '@/components/ui';
-import { ChallengeList, MapImage, Scrim } from '@/components/fun';
-import { ROUTES } from '@/hooks/usePamporovoSimulation';
-import { routeUrl } from '@/lib/mapbox';
+import { Screen, Text } from '@/components/ui';
+import { MapImage, Scrim } from '@/components/fun';
+import { ActivityRings } from '@/components/fun/ActivityRings';
 import { useSentioStore } from '@/store/useSentioStore';
+import { ROUTES } from '@/hooks/usePamporovoSimulation';
 import { useTheme } from '@/hooks/useTheme';
 import { SPORTS } from '@/constants/sports';
 import { formatDuration } from '@/lib/format';
-import { radius, space, fun } from '@/constants/tokens';
+import { routeUrl } from '@/lib/mapbox';
+import { space, fun, fontFamily } from '@/constants/tokens';
 
 export default function StatsScreen() {
   const { colors } = useTheme();
@@ -24,78 +25,109 @@ export default function StatsScreen() {
     return () => clearInterval(t);
   }, []);
 
-  const vertical = Math.round(session.maxAltitude - session.minAltitude);
   const isSki = sport === 'SKI';
+  const vertical = Math.round(session.maxAltitude - session.minAltitude);
+  const metrics = [
+    { label: 'Top speed', value: `${Math.round(session.maxSpeed)}`, unit: 'km/h', color: colors.accent },
+    { label: 'Peak G', value: session.peakG.toFixed(1), unit: 'G', color: fun.flame },
+    { label: 'Altitude', value: `${Math.round(telemetry.altitude)}`, unit: 'm', color: fun.lime },
+    isSki
+      ? { label: 'Vertical', value: `${vertical}`, unit: 'm', color: fun.violet }
+      : { label: 'Lap', value: telemetry.lapTime, unit: '', color: fun.violet },
+    { label: 'Air time', value: telemetry.airTime.toFixed(1), unit: 's', color: fun.pink },
+    { label: 'Current G', value: telemetry.gForce.toFixed(1), unit: 'G', color: fun.silver },
+  ];
 
   return (
-    <Screen
-      title="Ride"
-      subtitle={`${SPORTS[sport].label} · today`}
-      accessory={<Chip tone="success" dotColor={colors.success} label={formatDuration(now - session.startedAt)} />}
-    >
-      <Surface padding={space.xl} style={{ gap: space.xs }}>
-        <Text variant="label" tone="secondary">
-          Current speed
+    <Screen gap={space.xxxl + 4}>
+      {/* header */}
+      <View style={{ gap: space.xs, marginTop: space.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
+          <Text variant="overline" tone="success" tabular>
+            Live · {formatDuration(now - session.startedAt)}
+          </Text>
+        </View>
+        <Text variant="title" accessibilityRole="header">
+          Today’s ride
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: space.sm }} accessible accessibilityLabel={`${Math.round(telemetry.speed)} kilometres per hour`}>
-          <Text variant="hero" tabular>
+        <Text variant="callout" tone="secondary">
+          {SPORTS[sport].label} · Pamporovo
+        </Text>
+      </View>
+
+      {/* hero */}
+      <View accessible accessibilityLabel={`Current speed ${Math.round(telemetry.speed)} kilometres per hour`}>
+        <Text variant="overline" tone="secondary">
+          Speed now
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm }}>
+          <Text variant="hero" tabular style={{ fontSize: 148, lineHeight: 140 }}>
             {Math.round(telemetry.speed)}
           </Text>
-          <Text variant="headline" tone="secondary">
+          <Text variant="headline" tone="secondary" style={{ marginBottom: 20 }}>
             km/h
           </Text>
         </View>
-        <SpeedBar value={telemetry.speed} max={Math.max(60, session.maxSpeed)} />
-        <Text variant="caption" tone="tertiary" tabular style={{ marginTop: space.xs }}>
-          Session max {Math.round(session.maxSpeed)} km/h
-        </Text>
-      </Surface>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md }}>
-        <StatTile label="Top speed" icon="speedometer-outline" value={`${Math.round(session.maxSpeed)}`} unit="km/h" />
-        <StatTile label="Peak G-force" icon="pulse-outline" value={session.peakG.toFixed(1)} unit="G" />
-        <StatTile label="Altitude" icon="trending-up-outline" value={`${Math.round(telemetry.altitude)}`} unit="m" />
-        {isSki ? (
-          <StatTile label="Vertical" icon="arrow-down-outline" value={`${vertical}`} unit="m" />
-        ) : (
-          <StatTile label="Lap time" icon="stopwatch-outline" value={telemetry.lapTime} />
-        )}
-        <StatTile label="Air time" icon="airplane-outline" value={telemetry.airTime.toFixed(1)} unit="s" />
-        <StatTile label="Current G" icon="radio-button-on-outline" value={telemetry.gForce.toFixed(1)} unit="G" />
+        <SpeedTrack value={telemetry.speed} max={Math.max(80, session.maxSpeed)} best={session.maxSpeed} />
       </View>
 
-      <View style={{ gap: space.md }}>
-        <SectionHeader title="G-force" />
-        <Surface>
-          {session.gHistory.length > 1 ? (
-            <Sparkline data={session.gHistory} />
-          ) : (
-            <View style={{ height: 96, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-              <Text variant="bodyStrong">No G-force data yet</Text>
-              <Text variant="callout" tone="secondary" align="center">
-                {bleConnected ? 'Start riding — impacts and landings will show up here.' : 'Connect your goggles to record G-force.'}
+      {/* metrics: two columns, no boxes, hairline rules */}
+      <View style={styles.grid}>
+        {metrics.map((m, i) => (
+          <View
+            key={m.label}
+            style={[styles.metric, { borderTopColor: colors.border }, i % 2 === 0 && { paddingRight: space.lg }, i % 2 === 1 && { paddingLeft: space.lg, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}
+            accessible
+            accessibilityLabel={`${m.label} ${m.value} ${m.unit}`}
+          >
+            <Text variant="overline" color={m.color}>
+              {m.label}
+            </Text>
+            <Text variant="display" tabular style={{ fontSize: 44, lineHeight: 46 }}>
+              {m.value}
+              <Text variant="callout" tone="secondary" style={{ fontFamily: fontFamily.displaySemi }}>
+                {' '}
+                {m.unit}
               </Text>
-            </View>
-          )}
-        </Surface>
+            </Text>
+          </View>
+        ))}
       </View>
 
-      <View style={{ gap: space.md }}>
-        <SectionHeader title="Today’s challenges" />
-        <ChallengeList />
+      {/* rings */}
+      <View style={{ gap: space.lg }}>
+        <SectionTitle title="Today’s challenges" />
+        <ActivityRings />
       </View>
 
+      {/* g-force */}
       <View style={{ gap: space.md }}>
-        <SectionHeader title="Personal bests" />
-        <View style={{ flexDirection: 'row', gap: space.md }}>
+        <SectionTitle title="G-force" />
+        {session.gHistory.length > 1 ? (
+          <Bars data={session.gHistory} />
+        ) : (
+          <View style={{ gap: 4 }}>
+            <Bars data={[1, 1.2, 1.1, 1.6, 2.4, 1.3, 1.1, 3.1, 1.4, 1.2, 1.9, 1.1, 1.0, 2.2, 1.3, 1.1, 1.2, 2.8, 1.2, 1.1]} ghost />
+            <Text variant="callout" tone="secondary">
+              {bleConnected ? 'Impacts and landings appear as you ride.' : 'Connect your goggles to record G-force.'}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* personal bests */}
+      <View style={{ gap: space.lg }}>
+        <SectionTitle title="Personal bests" />
+        <View style={{ flexDirection: 'row' }}>
           {[
             { icon: 'speedometer' as const, v: '74', u: 'km/h', l: 'Top speed' },
             { icon: 'airplane' as const, v: '1.8', u: 's', l: 'Air time' },
             { icon: 'trending-down' as const, v: '2.1k', u: 'm', l: 'Best day' },
-          ].map((p) => (
-            <Surface key={p.l} style={{ flex: 1, alignItems: 'center', gap: 4, borderColor: fun.gold + '44' }}>
-              <Ionicons name={p.icon} size={20} color={fun.gold} />
-              <Text variant="headline" tabular>
+          ].map((p, i) => (
+            <View key={p.l} style={[{ flex: 1, gap: 4 }, i > 0 && { paddingLeft: space.lg, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
+              <Ionicons name={p.icon} size={18} color={fun.gold} />
+              <Text variant="display" tabular style={{ fontSize: 34, lineHeight: 36 }}>
                 {p.v}
                 <Text variant="caption" tone="secondary">
                   {' '}
@@ -105,57 +137,73 @@ export default function StatsScreen() {
               <Text variant="caption" tone="secondary">
                 {p.l}
               </Text>
-            </Surface>
+            </View>
           ))}
         </View>
       </View>
 
-      <View style={{ gap: space.md }}>
-        <SectionHeader title="Last run" />
-        <Surface padding={0} style={{ overflow: 'hidden' }}>
-          <MapImage uri={routeUrl(ROUTES.g1[0].waypoints, { width: 640, height: 360 })} style={{ width: '100%', aspectRatio: 1.7 }} accessibilityLabel="Map of your last run">
-            <Scrim height="45%" to={0.7} />
-            <View style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: space.md, flexDirection: 'row', gap: space.xl }}>
+      {/* last run — full bleed */}
+      <View style={{ gap: space.lg }}>
+        <SectionTitle title="Last run" />
+        <MapImage uri={routeUrl(ROUTES.g1[0].waypoints, { width: 700, height: 440 })} style={{ marginHorizontal: -space.xl, aspectRatio: 1.45 }} accessibilityLabel="Map of your last run">
+          <Scrim height="55%" to={0.8} />
+          <View style={{ position: 'absolute', left: space.xl, right: space.xl, bottom: space.lg }}>
+            <Text variant="title" color="#fff">
+              Malina
+            </Text>
+            <View style={{ flexDirection: 'row', gap: space.xl, marginTop: space.xs }}>
               {[
-                ['Malina', 'Run'],
-                ['52 km/h', 'Top'],
-                ['3:05', 'Time'],
+                ['52', 'km/h top'],
+                ['3:05', 'time'],
+                ['412', 'm vertical'],
               ].map(([v, l]) => (
-                <View key={l}>
-                  <Text variant="caption" color="rgba(255,255,255,0.75)">
-                    {l}
-                  </Text>
-                  <Text variant="headline" color="#fff" tabular>
+                <Text key={l} variant="callout" color="rgba(255,255,255,0.75)">
+                  <Text variant="headline" color="#fff" tabular style={{ fontFamily: fontFamily.numeric, fontSize: 22 }}>
                     {v}
-                  </Text>
-                </View>
+                  </Text>{' '}
+                  {l}
+                </Text>
               ))}
             </View>
-          </MapImage>
-        </Surface>
+          </View>
+        </MapImage>
       </View>
     </Screen>
   );
 }
 
-function SpeedBar({ value, max }: { value: number; max: number }) {
-  const { colors } = useTheme();
-  const pct = Math.min(1, value / max);
+function SectionTitle({ title }: { title: string }) {
   return (
-    <View style={{ height: 8, borderRadius: radius.pill, backgroundColor: colors.surfaceSunken, overflow: 'hidden', marginTop: space.sm }}>
-      <View style={{ width: `${pct * 100}%`, height: '100%', borderRadius: radius.pill, backgroundColor: colors.accent }} />
+    <Text variant="headline" accessibilityRole="header" style={{ fontSize: 22 }}>
+      {title}
+    </Text>
+  );
+}
+
+function SpeedTrack({ value, max, best }: { value: number; max: number; best: number }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.surfaceSunken, marginTop: space.md }}>
+      <View style={{ width: `${Math.min(1, value / max) * 100}%`, height: '100%', borderRadius: 3, backgroundColor: colors.accent }} />
+      {best > 0 && <View style={{ position: 'absolute', left: `${Math.min(1, best / max) * 100}%`, top: -4, width: 2, height: 14, borderRadius: 1, backgroundColor: fun.gold }} />}
     </View>
   );
 }
 
-function Sparkline({ data }: { data: number[] }) {
+function Bars({ data, ghost }: { data: number[]; ghost?: boolean }) {
   const { colors } = useTheme();
-  const max = Math.max(3, ...data);
+  const max = Math.max(3.5, ...data);
   return (
-    <View style={{ height: 96, flexDirection: 'row', alignItems: 'flex-end', gap: 3 }} accessible accessibilityLabel={`G-force history, peak ${max.toFixed(1)} G`}>
+    <View style={{ height: 88, flexDirection: 'row', alignItems: 'flex-end', gap: 4, opacity: ghost ? 0.25 : 1 }} accessible={!ghost} accessibilityLabel={`G-force history, peak ${max.toFixed(1)} G`}>
       {data.map((g, i) => (
-        <View key={i} style={{ flex: 1, height: `${Math.max(4, (g / max) * 100)}%`, borderRadius: 2, backgroundColor: g > 3 ? colors.warning : colors.accent, opacity: 0.4 + 0.6 * (i / data.length) }} />
+        <View key={i} style={{ flex: 1, height: `${Math.max(6, (g / max) * 100)}%`, borderRadius: 3, backgroundColor: g > 2.5 ? fun.flame : colors.accent }} />
       ))}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  metric: { width: '50%', paddingVertical: space.lg, borderTopWidth: StyleSheet.hairlineWidth, gap: 2 },
+});

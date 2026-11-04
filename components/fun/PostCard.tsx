@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming, ZoomIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Text, Avatar, Surface } from '@/components/ui';
+import { Text, Avatar } from '@/components/ui';
 import { useSentioStore } from '@/store/useSentioStore';
 import { useSocialStore, type Post } from '@/store/useSocialStore';
 import { useTheme } from '@/hooks/useTheme';
@@ -48,7 +48,7 @@ export function PostCard({ post }: { post: Post }) {
   const tagColor = post.tag ? fun[post.tag.tone] : undefined;
 
   return (
-    <Surface padding={0} radius={radius.lg} style={{ overflow: 'hidden' }}>
+    <View>
       <View style={styles.header}>
         <Avatar source={rider.avatarUri} size={40} />
         <View style={{ flex: 1 }}>
@@ -57,14 +57,12 @@ export function PostCard({ post }: { post: Post }) {
             {ago(post.minutesAgo)} · {post.place}
           </Text>
         </View>
-        <View style={[styles.level, { backgroundColor: colors.surfaceSunken }]}>
-          <Text variant="caption" tone="secondary" tabular>
-            Lv {rider.level}
-          </Text>
-        </View>
+        <Text variant="overline" tone="tertiary" tabular>
+          Lv {rider.level}
+        </Text>
       </View>
 
-      <Text variant="body" style={{ paddingHorizontal: space.lg, paddingBottom: space.md }}>
+      <Text variant="body" style={{ paddingBottom: space.md }}>
         {post.text}
       </Text>
 
@@ -116,7 +114,7 @@ export function PostCard({ post }: { post: Post }) {
                     <Text variant="caption" color="rgba(255,255,255,0.75)">
                       {s.label}
                     </Text>
-                    <Text variant="headline" color="#fff" tabular>
+                    <Text variant="display" color="#fff" tabular style={{ fontSize: 32, lineHeight: 34 }}>
                       {s.value}
                     </Text>
                   </View>
@@ -150,7 +148,7 @@ export function PostCard({ post }: { post: Post }) {
         <View style={{ flex: 1 }} />
         <Ionicons name="paper-plane-outline" size={23} color={colors.text} accessibilityLabel="Share" />
       </View>
-    </Surface>
+    </View>
   );
 }
 
@@ -170,12 +168,12 @@ function BurstAutoHide({ onDone }: { onDone: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, paddingBottom: space.md },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingBottom: space.md },
   level: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  media: { width: '100%', aspectRatio: 1.55 },
-  tag: { position: 'absolute', top: space.md, left: space.md, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 26, borderRadius: radius.pill },
-  statRow: { position: 'absolute', left: space.lg, right: space.lg, bottom: space.md, flexDirection: 'row', gap: space.xl },
+  media: { marginHorizontal: -space.xl, aspectRatio: 1.2 },
+  tag: { position: 'absolute', top: space.lg, left: space.xl, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 26, borderRadius: radius.pill },
+  statRow: { position: 'absolute', left: space.xl, right: space.xl, bottom: space.lg, flexDirection: 'row', gap: space.xl },
   burst: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: space.xl, paddingHorizontal: space.lg, paddingVertical: space.md },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.xl, paddingTop: space.md },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40 },
 });

@@ -36,7 +36,7 @@ export function Podium({ entries, unit }: { entries: PodiumEntry[]; unit: string
             </Text>
             <Animated.View
               entering={FadeInUp.delay(120 * col).springify().damping(14)}
-              style={[styles.block, { height: HEIGHTS[rank], backgroundColor: COLORS[rank] + '26', borderColor: COLORS[rank] + '80' }]}
+              style={[styles.block, { height: HEIGHTS[rank], backgroundColor: COLORS[rank] + (rank === 0 ? '33' : '22') }]}
             >
               <Text variant="display" color={COLORS[rank]} style={{ fontSize: 40, lineHeight: 46 }}>
                 {rank + 1}
@@ -52,5 +52,5 @@ export function Podium({ entries, unit }: { entries: PodiumEntry[]; unit: string
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   col: { flex: 1, alignItems: 'center' },
-  block: { alignSelf: 'stretch', marginTop: space.sm, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, borderWidth: 1, borderBottomWidth: 0, alignItems: 'center', paddingTop: space.sm },
+  block: { alignSelf: 'stretch', marginTop: space.sm, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, alignItems: 'center', paddingTop: space.sm },
 });
