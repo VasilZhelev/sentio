@@ -1,0 +1,57 @@
+# Builds an UNSIGNED Release .ipa (JS bundle embedded) so it can be signed
+# on Windows with a free Apple ID via Sideloadly. No Apple Developer Program needed.
+build:
+  name: Unsigned iOS build (for sideloading)
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - eas/prebuild
+    - run:
+        name: Install pods
+        working_directory: ./ios
+        command: pod install
+    - run:
+        name: Build unsigned app
+        working_directory: ./ios
+        command: |
+          set -eo pipefail
+          WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
+          SCHEME="${WORKSPACE%.xcworkspace}"
+          echo "Building workspace=$WORKSPACE scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > xcodebuild.log 2>&1 && STATUS=0 || STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "===== xcodebuild failed ($STATUS) — real errors: ====="
+            grep -E "(^|[^a-zA-Z])(error|fatal error): |BUILD FAILED|The following build commands failed|PhaseScriptExecution|Command .* failed" xcodebuild.log \
+              | grep -v "warning:" > errors.txt || true
+            sed -n '1,80p' errors.txt
+            echo "===== last 120 lines ====="
+            tail -n 120 xcodebuild.log
+            exit 1
+          fi
+          tail -n 5 xcodebuild.log
+    - run:
+        name: Package .ipa
+        working_directory: ./ios
+        command: |
+          set -e
+          APP=$(ls -d build/Build/Products/Release-iphoneos/*.app | head -n 1)
+          echo "Packaging $APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry sentio-unsigned.ipa Payload
+          ls -lh sentio-unsigned.ipa
+    - eas/upload_artifact:
+        name: Upload unsigned ipa
+        inputs:
+          type: application-archive
+          path: ios/sentio-unsigned.ipa

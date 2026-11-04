@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vasilzhelev.sentio",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +27,7 @@
       "permissions": [
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
@@ -34,10 +39,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      ["@rnmapbox/maps", {
-        "RNMapboxMapsDownloadToken": "pk.eyJ1IjoidmFzaWwtemhlbGV2IiwiYSI6ImNtbXZ5NnFjYTJkOWUyeXIwbmRjd2RkcTAifQ.c0735l2Vej_xd10i6Ol0SQ",
-        "RNMapboxMapsVersion": "11.9.1"
-      }],
+      "@rnmapbox/maps",
       "expo-router",
       [
         "expo-splash-screen",
@@ -64,7 +66,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to track your speed and location on the track."
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to track your speed and location on the track.",
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to track your speed and location on the track."
         }
       ]
     ],
@@ -76,6 +79,17 @@
       "router": {},
       "eas": {
         "projectId": "9e9e2ff2-dd3b-4da8-8e01-5d02b54db20a"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9e9e2ff2-dd3b-4da8-8e01-5d02b54db20a",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "production"
       }
     }
   }
