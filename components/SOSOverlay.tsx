@@ -5,6 +5,7 @@ import { useSentioStore } from '../store/useSentioStore';
 import { FONTS, getThemePalette } from '../constants/Styles';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { useSmartGlassesBLE } from '../hooks/useSmartGlassesBLE';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ export default function SOSOverlay() {
     theme
   } = useSentioStore();
 
+  const { sendCancel } = useSmartGlassesBLE();
   const palette = getThemePalette(sportProfile, theme);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -103,6 +105,8 @@ export default function SOSOverlay() {
               style={[styles.btn, styles.btnCancel]} 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                // Tell the ESP32 glasses to stop their countdown too
+                sendCancel();
                 cancelCrash();
               }}
             >
