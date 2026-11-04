@@ -23,7 +23,7 @@ export function Skeleton({ width = '100%', height = 16, style }: { width?: numbe
 export function ComingSoon({ icon, title, body }: { icon: IconName; title: string; body: string }) {
   const { colors } = useTheme();
   return (
-    <Surface style={{ alignItems: 'center', paddingVertical: space.xxl, gap: space.sm, borderStyle: 'dashed', borderColor: colors.borderStrong }}>
+    <Surface style={{ alignItems: 'center', paddingVertical: space.xxl, gap: space.sm }}>
       <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={icon} size={22} color={colors.accent} />
       </View>

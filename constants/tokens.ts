@@ -1,4 +1,5 @@
-// Sentio design tokens — "Alpine premium".
+// Sentio design tokens — "Liquid Alpine".
+// Content sits on the canvas (no boxed cards). Floating controls use liquid glass.
 // Rule: `sos` red is reserved for crash / SOS states only. Never use it for errors or decoration.
 import type { TextStyle } from 'react-native';
 
@@ -31,18 +32,18 @@ export type Colors = {
 };
 
 const dark: Colors = {
-  bg: '#0E1013',
-  surface: '#161A1F',
-  surfaceRaised: '#1F242B',
-  surfaceSunken: '#0A0C0E',
-  overlay: 'rgba(22,26,31,0.72)',
-  overlayStrong: 'rgba(22,26,31,0.95)',
-  border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.16)',
-  text: '#F2F4F7',
-  textSecondary: '#9BA4AF',
-  textTertiary: '#6B7480',
-  textInverse: '#0E1013',
+  bg: '#07080A',
+  surface: '#111317',
+  surfaceRaised: '#1A1D22',
+  surfaceSunken: '#16191D',
+  overlay: 'rgba(255,255,255,0.07)',
+  overlayStrong: 'rgba(24,27,32,0.94)',
+  border: 'rgba(255,255,255,0.07)',
+  borderStrong: 'rgba(255,255,255,0.12)',
+  text: '#F5F7FA',
+  textSecondary: '#9AA3AE',
+  textTertiary: '#5E6672',
+  textInverse: '#07080A',
   accent: '#4FD1FF',
   accentSoft: 'rgba(79,209,255,0.14)',
   onAccent: '#04222E',
@@ -57,14 +58,14 @@ const dark: Colors = {
 };
 
 const light: Colors = {
-  bg: '#F4F6F8',
+  bg: '#F3F4F6',
   surface: '#FFFFFF',
   surfaceRaised: '#FFFFFF',
-  surfaceSunken: '#E9EDF1',
-  overlay: 'rgba(255,255,255,0.78)',
-  overlayStrong: 'rgba(255,255,255,0.96)',
-  border: 'rgba(14,16,19,0.08)',
-  borderStrong: 'rgba(14,16,19,0.16)',
+  surfaceSunken: '#E7EAEE',
+  overlay: 'rgba(255,255,255,0.45)',
+  overlayStrong: 'rgba(255,255,255,0.94)',
+  border: 'rgba(14,16,19,0.07)',
+  borderStrong: 'rgba(14,16,19,0.12)',
   text: '#0E1013',
   textSecondary: '#5B6470',
   textTertiary: '#8A939E',
@@ -105,6 +106,12 @@ export const fontFamily = {
   medium: 'Inter_500Medium',
   semibold: 'Inter_600SemiBold',
   bold: 'Inter_700Bold',
+  /** DIN-like sport face for headlines, labels and numbers. */
+  display: 'Barlow_700Bold',
+  displaySemi: 'Barlow_600SemiBold',
+  /** Condensed for big live numbers (speed, countdown). */
+  numeric: 'BarlowCondensed_600SemiBold',
+  numericBold: 'BarlowCondensed_700Bold',
 } as const;
 
 export type TypeVariant =
@@ -120,16 +127,16 @@ export type TypeVariant =
   | 'overline';
 
 export const type: Record<TypeVariant, TextStyle> = {
-  hero: { fontFamily: fontFamily.bold, fontSize: 96, lineHeight: 100, letterSpacing: -4 },
-  display: { fontFamily: fontFamily.bold, fontSize: 56, lineHeight: 60, letterSpacing: -2 },
-  title: { fontFamily: fontFamily.bold, fontSize: 28, lineHeight: 34, letterSpacing: -0.6 },
-  headline: { fontFamily: fontFamily.semibold, fontSize: 20, lineHeight: 26, letterSpacing: -0.3 },
+  hero: { fontFamily: fontFamily.numeric, fontSize: 128, lineHeight: 124, letterSpacing: -3 },
+  display: { fontFamily: fontFamily.numeric, fontSize: 64, lineHeight: 64, letterSpacing: -1.5 },
+  title: { fontFamily: fontFamily.display, fontSize: 34, lineHeight: 38, letterSpacing: -0.5 },
+  headline: { fontFamily: fontFamily.displaySemi, fontSize: 21, lineHeight: 26, letterSpacing: -0.1 },
   body: { fontFamily: fontFamily.regular, fontSize: 16, lineHeight: 22 },
   bodyStrong: { fontFamily: fontFamily.semibold, fontSize: 16, lineHeight: 22 },
   callout: { fontFamily: fontFamily.medium, fontSize: 14, lineHeight: 20 },
   label: { fontFamily: fontFamily.semibold, fontSize: 13, lineHeight: 18 },
   caption: { fontFamily: fontFamily.medium, fontSize: 12, lineHeight: 16 },
-  overline: { fontFamily: fontFamily.semibold, fontSize: 12, lineHeight: 16, letterSpacing: 0.6, textTransform: 'uppercase' },
+  overline: { fontFamily: fontFamily.displaySemi, fontSize: 12, lineHeight: 16, letterSpacing: 1.4, textTransform: 'uppercase' },
 };
 
 // ── Layout ─────────────────────────────────────────────
@@ -149,10 +156,10 @@ export const elevation = {
   },
   float: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    elevation: 10,
   },
 } as const;
 

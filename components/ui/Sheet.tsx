@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './Text';
 import { IconButton } from './IconButton';
 import { useTheme } from '@/hooks/useTheme';
-import { radius, space } from '@/constants/tokens';
+import { space } from '@/constants/tokens';
 
 type Props = {
   visible: boolean;
@@ -35,7 +35,7 @@ export function Sheet({ visible, onClose, title, subtitle, children, scroll }: P
             accessibilityViewIsModal
             style={[
               styles.sheet,
-              { backgroundColor: colors.surfaceRaised, borderColor: colors.border, paddingBottom: insets.bottom + space.lg },
+              { backgroundColor: colors.surfaceRaised, paddingBottom: insets.bottom + space.lg },
             ]}
           >
             <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
@@ -70,10 +70,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderWidth: 1,
-    borderBottomWidth: 0,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
     paddingHorizontal: space.xl,
     paddingTop: space.sm,
   },

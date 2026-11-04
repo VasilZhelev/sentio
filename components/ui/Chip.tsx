@@ -24,7 +24,7 @@ type Props = {
 export function Chip({ label, icon, dotColor, tone = 'neutral', selected, onPress, glass, style }: Props) {
   const { colors, glass: glassBg } = useTheme();
   const tones = {
-    neutral: { bg: glass ? glassBg : colors.surfaceRaised, fg: colors.text },
+    neutral: { bg: glass ? glassBg : colors.surfaceSunken, fg: colors.text },
     accent: { bg: colors.accentSoft, fg: colors.accent },
     success: { bg: colors.successSoft, fg: colors.success },
     warning: { bg: colors.warningSoft, fg: colors.warning },
@@ -43,8 +43,6 @@ export function Chip({ label, icon, dotColor, tone = 'neutral', selected, onPres
           paddingHorizontal: space.md,
           borderRadius: radius.pill,
           backgroundColor: bg,
-          borderWidth: tone === 'neutral' && !selected ? 1 : 0,
-          borderColor: colors.border,
         },
         style,
       ]}

@@ -1,5 +1,6 @@
 export { Text } from './Text';
 export { Surface } from './Surface';
+export { Glass } from './Glass';
 export { PressableScale } from './PressableScale';
 export { Button } from './Button';
 export { IconButton } from './IconButton';

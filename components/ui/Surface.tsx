@@ -1,39 +1,39 @@
 import React from 'react';
-import { View, StyleSheet, Platform, type ViewProps } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { radius as radii, space, elevation } from '@/constants/tokens';
+import { View, type ViewProps } from 'react-native';
+import { radius as radii, space } from '@/constants/tokens';
 import { useTheme } from '@/hooks/useTheme';
+import { Glass } from './Glass';
 
 type Props = ViewProps & {
-  /** solid: cards on a screen. glass: floating over the map. raised: sheets/popovers. sunken: wells & inputs. */
-  variant?: 'solid' | 'glass' | 'raised' | 'sunken';
+  /**
+   * fill: a quiet tonal panel (no border, no shadow) for grouped content.
+   * glass: liquid glass, for anything floating over imagery or the map.
+   * raised: popovers / sheets. sunken: wells & inputs.
+   * `solid` is kept as an alias of `fill`.
+   */
+  variant?: 'fill' | 'solid' | 'glass' | 'raised' | 'sunken';
   padding?: number;
   radius?: number;
+  /** @deprecated borders are not part of the design language any more */
   bordered?: boolean;
 };
 
-export function Surface({ variant = 'solid', padding = space.lg, radius = radii.lg, bordered = true, style, children, ...rest }: Props) {
-  const { colors, isDark, glass } = useTheme();
-
-  const base = {
-    borderRadius: radius,
-    padding,
-    borderWidth: bordered ? StyleSheet.hairlineWidth * 2 : 0,
-    borderColor: colors.border,
-  };
+export function Surface({ variant = 'fill', padding = space.lg, radius = radii.xl, style, children, bordered: _b, ...rest }: Props) {
+  const { colors } = useTheme();
 
   if (variant === 'glass') {
     return (
-      <View {...rest} style={[base, { overflow: 'hidden', padding: 0, backgroundColor: glass }, elevation.float, style]}>
-        {Platform.OS === 'ios' && <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />}
-        <View style={{ padding }}>{children}</View>
-      </View>
+      <Glass radius={radius} style={style}>
+        <View {...rest} style={{ padding }}>
+          {children}
+        </View>
+      </Glass>
     );
   }
 
-  const bg = { solid: colors.surface, raised: colors.surfaceRaised, sunken: colors.surfaceSunken }[variant];
+  const bg = { fill: colors.surface, solid: colors.surface, raised: colors.surfaceRaised, sunken: colors.surfaceSunken }[variant];
   return (
-    <View {...rest} style={[base, { backgroundColor: bg }, variant === 'raised' && elevation.float, !isDark && variant === 'solid' && elevation.card, style]}>
+    <View {...rest} style={[{ borderRadius: radius, padding, backgroundColor: bg }, style]}>
       {children}
     </View>
   );

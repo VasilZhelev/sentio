@@ -35,7 +35,7 @@ export function ListRow({ title, subtitle, icon, iconColor, value, badge, chevro
           <Ionicons name={icon} size={18} color={iconColor ?? colors.text} />
         </View>
       )}
-      <View style={[styles.body, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderStrong }]}>
+      <View style={[styles.body, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
         <View style={{ flex: 1, paddingVertical: space.md }}>
           <Text variant="bodyStrong" style={disabled && { opacity: 0.5 }}>
             {title}
@@ -85,7 +85,7 @@ export function ListRow({ title, subtitle, icon, iconColor, value, badge, chevro
 }
 
 export function ListGroup({ title, footer, children }: { title?: string; footer?: string; children: React.ReactNode }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <View style={{ gap: space.sm }}>
       {title && (
@@ -96,11 +96,9 @@ export function ListGroup({ title, footer, children }: { title?: string; footer?
       <View
         style={{
           backgroundColor: colors.surface,
-          borderRadius: radius.lg,
+          borderRadius: radius.xl,
           paddingLeft: space.lg,
           overflow: 'hidden',
-          borderWidth: isDark ? 1 : 0,
-          borderColor: colors.border,
         }}
       >
         {children}

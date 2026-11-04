@@ -9,6 +9,7 @@ import { haptic } from '@/lib/haptics';
 import type { IconName } from '@/constants/sports';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'sos' | 'onSos' | 'onSosOutline';
+// All buttons are capsules: the shape says "tap me"; content blocks never are.
 type Size = 'md' | 'lg' | 'glove';
 
 type Props = {
@@ -30,11 +31,11 @@ export function Button({ label, onPress, variant = 'primary', size = 'lg', icon,
   const { colors } = useTheme();
   const palette = {
     primary: { bg: colors.accent, fg: colors.onAccent, border: 'transparent' },
-    secondary: { bg: colors.surfaceRaised, fg: colors.text, border: colors.borderStrong },
+    secondary: { bg: colors.surfaceSunken, fg: colors.text, border: 'transparent' },
     ghost: { bg: 'transparent', fg: colors.accent, border: 'transparent' },
     sos: { bg: colors.sos, fg: colors.onSos, border: 'transparent' },
     onSos: { bg: 'rgba(255,255,255,0.96)', fg: '#B3141A', border: 'transparent' },
-    onSosOutline: { bg: 'transparent', fg: '#FFFFFF', border: 'rgba(255,255,255,0.6)' },
+    onSosOutline: { bg: 'rgba(0,0,0,0.18)', fg: '#FFFFFF', border: 'transparent' },
   }[variant];
 
   return (
@@ -50,7 +51,7 @@ export function Button({ label, onPress, variant = 'primary', size = 'lg', icon,
       style={[
         {
           height: heights[size],
-          borderRadius: radius.md + (size === 'glove' ? 6 : 2),
+          borderRadius: radius.pill,
           backgroundColor: palette.bg,
           borderWidth: palette.border === 'transparent' ? 0 : 1,
           borderColor: palette.border,
@@ -67,7 +68,7 @@ export function Button({ label, onPress, variant = 'primary', size = 'lg', icon,
       ) : (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           {icon && <Ionicons name={icon} size={size === 'md' ? 18 : 22} color={palette.fg} />}
-          <Text variant={size === 'glove' ? 'headline' : 'bodyStrong'} color={palette.fg}>
+          <Text variant={size === 'glove' ? 'headline' : 'bodyStrong'} color={palette.fg} style={size === 'glove' ? { fontSize: 19 } : undefined}>
             {label}
           </Text>
         </View>
