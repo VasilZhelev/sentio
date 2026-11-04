@@ -20,7 +20,7 @@ type Segment = { waypoints: WP[]; isLift: boolean };
 
 // ── Piste routes: each has a descent segment + a lift segment ──
 // Coords are placed ON actual Pamporovo piste lines.
-const ROUTES: Record<string, Segment[]> = {
+export const ROUTES: Record<string, Segment[]> = {
 
   // Alex — Malina piste (wide blue/red, main family run)
   g1: [
