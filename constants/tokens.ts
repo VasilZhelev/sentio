@@ -84,6 +84,21 @@ const light: Colors = {
 
 export const palettes: Record<ColorScheme, Colors> = { dark, light };
 
+// ── Game palette ───────────────────────────────────────
+// Only for gamification (badges, tiers, tags, confetti). Never for SOS or status.
+export const fun = {
+  gold: '#FFC53D',
+  silver: '#C3CCD6',
+  bronze: '#E3925A',
+  legend: '#B794FF',
+  violet: '#A78BFA',
+  pink: '#FF6FB5',
+  lime: '#B6F36A',
+  flame: '#FF7A1A',
+} as const;
+
+export const tierColor = { bronze: fun.bronze, silver: fun.silver, gold: fun.gold, legend: fun.legend } as const;
+
 // ── Typography ─────────────────────────────────────────
 export const fontFamily = {
   regular: 'Inter_400Regular',

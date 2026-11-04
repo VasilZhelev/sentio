@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Screen, Text, Surface, StatTile, Chip, ComingSoon, SectionHeader } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen, Text, Surface, StatTile, Chip, SectionHeader } from '@/components/ui';
+import { ChallengeList, MapImage, Scrim } from '@/components/fun';
+import { ROUTES } from '@/hooks/usePamporovoSimulation';
+import { routeUrl } from '@/lib/mapbox';
 import { useSentioStore } from '@/store/useSentioStore';
 import { useTheme } from '@/hooks/useTheme';
 import { SPORTS } from '@/constants/sports';
 import { formatDuration } from '@/lib/format';
-import { radius, space } from '@/constants/tokens';
+import { radius, space, fun } from '@/constants/tokens';
 
 export default function StatsScreen() {
   const { colors } = useTheme();
@@ -76,7 +80,60 @@ export default function StatsScreen() {
         </Surface>
       </View>
 
-      <ComingSoon icon="calendar-outline" title="Ride history" body="Every session saved with a 3D replay of your runs, and season totals to beat." />
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Today’s challenges" />
+        <ChallengeList />
+      </View>
+
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Personal bests" />
+        <View style={{ flexDirection: 'row', gap: space.md }}>
+          {[
+            { icon: 'speedometer' as const, v: '74', u: 'km/h', l: 'Top speed' },
+            { icon: 'airplane' as const, v: '1.8', u: 's', l: 'Air time' },
+            { icon: 'trending-down' as const, v: '2.1k', u: 'm', l: 'Best day' },
+          ].map((p) => (
+            <Surface key={p.l} style={{ flex: 1, alignItems: 'center', gap: 4, borderColor: fun.gold + '44' }}>
+              <Ionicons name={p.icon} size={20} color={fun.gold} />
+              <Text variant="headline" tabular>
+                {p.v}
+                <Text variant="caption" tone="secondary">
+                  {' '}
+                  {p.u}
+                </Text>
+              </Text>
+              <Text variant="caption" tone="secondary">
+                {p.l}
+              </Text>
+            </Surface>
+          ))}
+        </View>
+      </View>
+
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Last run" />
+        <Surface padding={0} style={{ overflow: 'hidden' }}>
+          <MapImage uri={routeUrl(ROUTES.g1[0].waypoints, { width: 640, height: 360 })} style={{ width: '100%', aspectRatio: 1.7 }} accessibilityLabel="Map of your last run">
+            <Scrim height="45%" to={0.7} />
+            <View style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: space.md, flexDirection: 'row', gap: space.xl }}>
+              {[
+                ['Malina', 'Run'],
+                ['52 km/h', 'Top'],
+                ['3:05', 'Time'],
+              ].map(([v, l]) => (
+                <View key={l}>
+                  <Text variant="caption" color="rgba(255,255,255,0.75)">
+                    {l}
+                  </Text>
+                  <Text variant="headline" color="#fff" tabular>
+                    {v}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </MapImage>
+        </Surface>
+      </View>
     </Screen>
   );
 }

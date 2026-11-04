@@ -6,14 +6,16 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import 'react-native-reanimated';
 import Mapbox from '@rnmapbox/maps';
+import { MAPBOX_TOKEN } from '@/lib/mapbox';
 import SOSOverlay from '@/components/SOSOverlay';
 import GlassesNotification from '@/components/GlassesNotification';
+import { CelebrationOverlay, XpToast } from '@/components/fun';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
 import { useOtaUpdates } from '@/hooks/useOtaUpdates';
 import { useTheme } from '@/hooks/useTheme';
 
 // Register the Mapbox token once, before any MapView renders.
-Mapbox.setAccessToken('pk.eyJ1IjoidmFzaWwtemhlbGV2IiwiYSI6ImNtbXZ5NnFjYTJkOWUyeXIwbmRjd2RkcTAifQ.c0735l2Vej_xd10i6Ol0SQ');
+Mapbox.setAccessToken(MAPBOX_TOKEN);
 Mapbox.setTelemetryEnabled(false);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -45,10 +47,13 @@ export default function RootLayout() {
     <ThemeProvider value={navTheme}>
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="profile" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
       <GlassesNotification />
+      <XpToast />
+      <CelebrationOverlay />
       <SOSOverlay />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>

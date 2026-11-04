@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
-import { Screen, Text, Avatar, ListGroup, ListRow, SegmentedControl, Surface, ComingSoon, SectionHeader, IconButton } from '@/components/ui';
+import { Ionicons } from '@expo/vector-icons';
+import { Screen, Text, Avatar, SegmentedControl, Surface, SectionHeader, IconButton } from '@/components/ui';
+import { StoriesRow, PostCard, Podium } from '@/components/fun';
 import { useSentioStore } from '@/store/useSentioStore';
+import { useSocialStore } from '@/store/useSocialStore';
 import { useTheme } from '@/hooks/useTheme';
-import { distanceMeters, formatDistance } from '@/lib/format';
-import { radius, space } from '@/constants/tokens';
+import { radius, space, fun } from '@/constants/tokens';
 
 type Metric = 'speed' | 'g' | 'air';
 const METRICS: { value: Metric; label: string; unit: string }[] = [
@@ -20,6 +21,7 @@ export default function CrewScreen() {
   const telemetry = useSentioStore((s) => s.telemetry);
   const session = useSentioStore((s) => s.session);
   const profile = useSentioStore((s) => s.profile);
+  const posts = useSocialStore((s) => s.posts);
   const [metric, setMetric] = useState<Metric>('speed');
 
   const board = useMemo(() => {
@@ -37,63 +39,99 @@ export default function CrewScreen() {
       subtitle={`Pamporovo · ${riders.length} riding now`}
       accessory={<IconButton icon="person-add-outline" accessibilityLabel="Invite friends" variant="solid" />}
     >
-      <ListGroup title="Riding now">
-        {riders.map((r, i) => (
-          <ListRow
-            key={r.id}
-            left={<Avatar source={r.avatarUri} size={44} status="online" />}
-            title={r.name}
-            subtitle={`${formatDistance(distanceMeters(telemetry.latitude, telemetry.longitude, r.latitude, r.longitude))} away · Level ${r.level}`}
-            value={`${r.speed} km/h`}
-            chevron
-            last={i === riders.length - 1}
-            onPress={() => router.navigate('/')}
-          />
-        ))}
-      </ListGroup>
+      <StoriesRow />
+
+      <CrewBattle />
 
       <View style={{ gap: space.md }}>
         <SectionHeader title="Today’s leaderboard" />
         <SegmentedControl options={METRICS} value={metric} onChange={setMetric} />
-        <Surface padding={space.sm}>
-          {board.map((row, i) => {
-            const podium = i < 3;
-            return (
-              <View
-                key={row.id}
-                style={[styles.row, row.me && { backgroundColor: colors.accentSoft }]}
-                accessible
-                accessibilityLabel={`Rank ${i + 1}, ${row.name}, ${fmt(row[metric])} ${unit}`}
-              >
-                <View style={[styles.rank, { backgroundColor: i === 0 ? colors.accent : podium ? colors.surfaceRaised : 'transparent' }]}>
-                  <Text variant="label" tabular color={i === 0 ? colors.onAccent : podium ? colors.text : colors.textTertiary}>
-                    {i + 1}
-                  </Text>
-                </View>
-                <Avatar source={row.avatar} size={36} />
-                <Text variant="bodyStrong" style={{ flex: 1 }} color={row.me ? colors.accent : undefined}>
-                  {row.me ? `${row.name} (you)` : row.name}
+        <Surface padding={space.lg} style={{ gap: space.md }}>
+          <Podium key={metric} unit={unit} entries={board.slice(0, 3).map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, value: fmt(r[metric]), me: r.me }))} />
+          <View style={{ gap: 2 }}>
+            {board.slice(3).map((row, i) => (
+              <View key={row.id} style={[styles.row, row.me && { backgroundColor: colors.accentSoft }]} accessible accessibilityLabel={`Rank ${i + 4}, ${row.name}, ${fmt(row[metric])} ${unit}`}>
+                <Text variant="label" tone="tertiary" tabular style={{ width: 20 }}>
+                  {i + 4}
                 </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                  <Text variant="headline" tabular>
-                    {fmt(row[metric])}
-                  </Text>
-                  <Text variant="caption" tone="secondary" style={{ width: 30 }}>
+                <Avatar source={row.avatar} size={32} />
+                <Text variant="bodyStrong" style={{ flex: 1 }} color={row.me ? colors.accent : undefined}>
+                  {row.me ? 'You' : row.name}
+                </Text>
+                <Text variant="bodyStrong" tabular>
+                  {fmt(row[metric])}{' '}
+                  <Text variant="caption" tone="secondary">
                     {unit}
                   </Text>
-                </View>
+                </Text>
               </View>
-            );
-          })}
+            ))}
+          </View>
         </Surface>
       </View>
 
-      <ComingSoon icon="images-outline" title="Ride feed" body="Share runs, clips and personal bests with your crew — and see what friends rode today." />
+      <View style={{ gap: space.md }}>
+        <SectionHeader title="Feed" />
+        {posts.map((p) => (
+          <PostCard key={p.id} post={p} />
+        ))}
+      </View>
     </Screen>
+  );
+}
+
+/** Crew vs crew: total vertical today. */
+function CrewBattle() {
+  const { colors } = useTheme();
+  const us = 6840;
+  const them = 5920;
+  const total = us + them;
+  return (
+    <Surface padding={space.lg} style={{ gap: space.md, borderColor: fun.flame + '55' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+        <Ionicons name="flash" size={16} color={fun.flame} />
+        <Text variant="overline" color={fun.flame}>
+          Crew battle · ends in 3 h 12 min
+        </Text>
+      </View>
+      <Text variant="headline">Most vertical today</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View>
+          <Text variant="caption" tone="secondary">
+            Your crew
+          </Text>
+          <Text variant="title" tabular color={colors.accent}>
+            {us.toLocaleString('en-US')} m
+          </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text variant="caption" tone="secondary">
+            Bansko Bandits
+          </Text>
+          <Text variant="title" tabular color={fun.pink}>
+            {them.toLocaleString('en-US')} m
+          </Text>
+        </View>
+      </View>
+      <View style={{ marginVertical: space.xs }}>
+        <View style={[styles.battle, { backgroundColor: fun.pink }]}>
+          <View style={{ width: `${(us / total) * 100}%`, height: '100%', backgroundColor: colors.accent }} />
+        </View>
+        <View style={[styles.vs, { backgroundColor: colors.surface, borderColor: colors.border, left: `${(us / total) * 100}%` }]}>
+          <Text variant="caption" style={{ fontSize: 10 }}>
+            VS
+          </Text>
+        </View>
+      </View>
+      <Text variant="callout" tone="secondary">
+        You’re 920 m ahead. One more lap from everyone seals it 💪
+      </Text>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.sm, paddingVertical: space.sm, borderRadius: radius.md },
-  rank: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  battle: { height: 12, borderRadius: 6, overflow: 'hidden', flexDirection: 'row' },
+  vs: { position: 'absolute', top: -8, marginLeft: -14, width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });

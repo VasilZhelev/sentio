@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeIn, FadeOut, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, cancelAnimation, Easing, runOnJS } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, withRepeat, cancelAnimation, Easing, runOnJS, useReducedMotion, ReduceMotion } from 'react-native-reanimated';
 import Mapbox from '@rnmapbox/maps';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, Surface, Chip, Avatar, Sheet, Button, PressableScale, useTabBarSpace } from '@/components/ui';
 import { EmojiSpam } from '@/components/EmojiSpam';
 import { useSentioStore, type GhostRider, type Hazard } from '@/store/useSentioStore';
+import { useSocialStore } from '@/store/useSocialStore';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
 import { usePamporovoSimulation } from '@/hooks/usePamporovoSimulation';
 import { useTerminalBridge } from '@/hooks/useTerminalBridge';
 import { useTheme } from '@/hooks/useTheme';
 import { SPORTS, hazardFor, type IconName } from '@/constants/sports';
-import { radius, space, hit, elevation } from '@/constants/tokens';
+import { radius, space, hit, elevation, fun } from '@/constants/tokens';
 import { distanceMeters, formatDistance, formatAgo } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
@@ -37,6 +38,10 @@ export default function MapScreen() {
   const addHazard = useSentioStore((s) => s.addHazard);
 
   const { sendCommandToDisplay } = useSmartGlassesBLE();
+  const addXp = useSocialStore((s) => s.addXp);
+  const progressChallenge = useSocialStore((s) => s.progressChallenge);
+  const progressBadge = useSocialStore((s) => s.progressBadge);
+  const level = useSocialStore((s) => s.level);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedRider, setSelectedRider] = useState<GhostRider | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<Hazard | null>(null);
@@ -63,12 +68,16 @@ export default function MapScreen() {
     haptic.success();
     setReportOpen(false);
     setToast({ icon: h.icon, text: `${h.label} reported — your crew will see it` });
+    addXp(20, 'Hazard reported');
+    progressChallenge('c-report', 1);
+    progressBadge('scout', 0.1);
   };
 
   const react = (emoji: string, dir: string) => {
     haptic.success();
     setSpam({ ts: Date.now(), emoji });
     sendCommandToDisplay(JSON.stringify({ s: telemetry.speed, dir }));
+    addXp(5, 'Hyped a friend');
   };
 
   return (
@@ -83,7 +92,20 @@ export default function MapScreen() {
         onPress={() => setSelectedRider(null)}
         onDidFinishLoadingStyle={() => setMapLoaded(true)}
       >
-        <Mapbox.Camera zoomLevel={14.5} centerCoordinate={[telemetry.longitude, telemetry.latitude]} pitch={55} animationDuration={0} />
+        <Mapbox.Camera zoomLevel={14.2} centerCoordinate={[telemetry.longitude, telemetry.latitude]} pitch={62} heading={200} animationDuration={0} />
+
+        {/* Real 3D mountains */}
+        <Mapbox.RasterDemSource id="sentio-dem" url="mapbox://mapbox.mapbox-terrain-dem-v1" tileSize={514} maxZoomLevel={14} />
+        <Mapbox.Terrain sourceID="sentio-dem" style={{ exaggeration: 1.5 }} />
+        <Mapbox.Atmosphere
+          style={{
+            color: isDark ? 'rgb(30, 40, 60)' : 'rgb(220, 235, 255)',
+            highColor: isDark ? 'rgb(12, 18, 32)' : 'rgb(120, 170, 230)',
+            horizonBlend: 0.08,
+            spaceColor: isDark ? 'rgb(8, 10, 16)' : 'rgb(170, 205, 245)',
+            starIntensity: isDark ? 0.3 : 0,
+          }}
+        />
 
         {hazards.map((h) => {
           const kind = hazardFor(sport, h.kind);
@@ -103,7 +125,15 @@ export default function MapScreen() {
           return (
             <Mapbox.MarkerView key={r.id} id={r.id} coordinate={[r.longitude, r.latitude]}>
               <Pressable onPress={() => { haptic.select(); setSelectedRider(r); }} accessibilityRole="button" accessibilityLabel={`${r.name}, ${r.speed} km/h`} style={{ alignItems: 'center' }} hitSlop={6}>
-                <Avatar source={r.avatarUri} size={selected ? 48 : 40} ringColor={selected ? colors.accent : isDark ? colors.surfaceRaised : '#fff'} />
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  <Pulse color={r.speed > 30 ? fun.flame : colors.accent} size={selected ? 48 : 40} />
+                  <Avatar source={r.avatarUri} size={selected ? 48 : 40} ringColor={selected ? colors.accent : r.speed > 30 ? fun.flame : isDark ? colors.surfaceRaised : '#fff'} />
+                  <View style={[styles.lvl, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
+                    <Text variant="caption" style={{ fontSize: 9, lineHeight: 12 }} tabular>
+                      {r.level}
+                    </Text>
+                  </View>
+                </View>
                 <View style={[styles.riderTag, { backgroundColor: selected ? colors.accent : colors.surfaceRaised }]}>
                   <Text variant="caption" color={selected ? colors.onAccent : colors.text} tabular>
                     {selected ? `${r.name} · ${r.speed} km/h` : r.name}
@@ -126,8 +156,13 @@ export default function MapScreen() {
 
       {/* ── Top bar ── */}
       <View style={[styles.topBar, { top: insets.top + space.sm }]} pointerEvents="box-none">
-        <PressableScale onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel="Profile and settings" style={[styles.avatarBtn, elevation.float]}>
-          <Avatar source={profile.avatar} size={44} ringColor={isDark ? colors.surfaceRaised : '#fff'} />
+        <PressableScale onPress={() => router.push('/profile')} accessibilityRole="button" accessibilityLabel={`Your profile, level ${level}`} style={[styles.avatarBtn, elevation.float]}>
+          <Avatar source={profile.avatar} size={44} ringColor={colors.accent} />
+          <View style={[styles.meLvl, { backgroundColor: colors.accent, borderColor: isDark ? colors.bg : '#fff' }]}>
+            <Text variant="caption" color={colors.onAccent} style={{ fontSize: 10, lineHeight: 13 }} tabular>
+              {level}
+            </Text>
+          </View>
         </PressableScale>
         <View style={{ flex: 1 }} />
         <Chip
@@ -268,6 +303,17 @@ export default function MapScreen() {
   );
 }
 
+/** Soft "live" ping behind a rider. */
+function Pulse({ color, size }: { color: string; size: number }) {
+  const reduced = useReducedMotion();
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (!reduced) t.value = withRepeat(withTiming(1, { duration: 1800 + Math.random() * 600, easing: Easing.out(Easing.quad) }), -1, false);
+  }, [reduced, t]);
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: 1 + t.value * 0.9 }], opacity: 0.55 * (1 - t.value) }));
+  return <Animated.View pointerEvents="none" style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, st]} />;
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -322,7 +368,7 @@ function SosTile({ onTrigger }: { onTrigger: () => void }) {
         setHolding(true);
         haptic.warning();
         tick.current = setInterval(() => haptic.heavy(), 400);
-        p.value = withTiming(1, { duration: 2000, easing: Easing.linear }, (f) => {
+        p.value = withTiming(1, { duration: 2000, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, (f) => {
           if (f) runOnJS(fire)();
         });
       }}
@@ -398,6 +444,8 @@ const styles = StyleSheet.create({
   sosTile: { overflow: 'hidden' },
   sosFill: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.28)' },
   hazard: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  lvl: { position: 'absolute', right: -6, top: -4, minWidth: 18, height: 16, paddingHorizontal: 3, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  meLvl: { position: 'absolute', right: -4, bottom: -4, minWidth: 20, height: 18, paddingHorizontal: 4, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   riderTag: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
   meWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   meHalo: { position: 'absolute', width: 44, height: 44, borderRadius: 22, borderWidth: 1 },

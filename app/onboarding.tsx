@@ -9,6 +9,8 @@ import { useSentioStore, type SportProfile } from '@/store/useSentioStore';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
 import { useTheme } from '@/hooks/useTheme';
 import { SPORTS, type IconName } from '@/constants/sports';
+import { MapImage, Scrim } from '@/components/fun';
+import { sceneUrl } from '@/lib/mapbox';
 import { radius, space } from '@/constants/tokens';
 import { haptic } from '@/lib/haptics';
 
@@ -27,8 +29,16 @@ export default function Onboarding() {
     router.replace('/');
   };
 
+  const { isDark } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg, paddingHorizontal: space.xl }}>
+      {step === 0 && (
+        <Animated.View entering={FadeIn.duration(600)} style={styles.hero} pointerEvents="none">
+          <MapImage uri={sceneUrl({ lat: 41.6452, lng: 24.6775 }, { zoom: 13.2, bearing: 165, pitch: 60, width: 420, height: 520 })} style={{ flex: 1 }} accessibilityLabel="Snowy mountains in 3D">
+            <Scrim height="75%" to={1} rgb={isDark ? '14,16,19' : '244,246,248'} />
+          </MapImage>
+        </Animated.View>
+      )}
       <View style={styles.progress} accessible accessibilityLabel={`Step ${step + 1} of ${STEPS}`}>
         {Array.from({ length: STEPS }).map((_, i) => (
           <View key={i} style={[styles.progressSeg, { backgroundColor: i <= step ? colors.accent : colors.surfaceRaised }]} />
@@ -53,7 +63,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
   ];
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1, justifyContent: 'center', gap: space.xxl }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', gap: space.xxl, paddingBottom: space.xxl }}>
         <View style={{ gap: space.md }}>
           <Text variant="overline" tone="accent">
             Sentio
@@ -220,6 +230,7 @@ function AlertRow({ icon, label, detail, tint }: { icon: IconName; label: string
 }
 
 const styles = StyleSheet.create({
+  hero: { position: 'absolute', top: 0, left: 0, right: 0, height: '55%' },
   progress: { flexDirection: 'row', gap: 6, marginBottom: space.lg },
   progressSeg: { flex: 1, height: 4, borderRadius: 2 },
   sportCard: { flexDirection: 'row', alignItems: 'center', gap: space.lg, padding: space.lg, borderRadius: radius.lg, borderWidth: 1.5 },

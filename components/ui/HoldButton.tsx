@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { View, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, cancelAnimation, Easing, runOnJS } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, cancelAnimation, Easing, runOnJS, ReduceMotion } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from './Text';
 import { haptic } from '@/lib/haptics';
@@ -47,7 +47,7 @@ export function HoldButton({ label, holdLabel = 'Keep holding…', icon, onCompl
     setHolding(true);
     haptic.warning();
     ticks.current = setInterval(() => haptic.tap(), 300);
-    progress.value = withTiming(1, { duration, easing: Easing.linear }, (finished) => {
+    progress.value = withTiming(1, { duration, easing: Easing.linear, reduceMotion: ReduceMotion.Never }, (finished) => {
       if (finished) runOnJS(done)();
     });
   };
