@@ -1,564 +1,409 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Image,
-  Animated,
-  PanResponder,
-} from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, Pressable } from 'react-native';
+import Animated, { FadeIn, FadeOut, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, cancelAnimation, Easing, runOnJS } from 'react-native-reanimated';
 import Mapbox from '@rnmapbox/maps';
-import TacticalBlur from '../../components/TacticalBlur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSentioStore } from '../../store/useSentioStore';
-import { getThemePalette, UI, FONTS } from '../../constants/Styles';
-import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import ModeSelector from '../../components/ModeSelector';
-import { useSmartGlassesBLE } from '../../hooks/useSmartGlassesBLE';
-import { EmojiSpam } from '../../components/EmojiSpam';
-import { usePamporovoSimulation } from '../../hooks/usePamporovoSimulation';
-import ReportFan from '../../components/ReportFan';
-import { useTerminalBridge } from '../../hooks/useTerminalBridge';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, Surface, Chip, Avatar, Sheet, Button, PressableScale, useTabBarSpace } from '@/components/ui';
+import { EmojiSpam } from '@/components/EmojiSpam';
+import { useSentioStore, type GhostRider, type Hazard } from '@/store/useSentioStore';
+import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
+import { usePamporovoSimulation } from '@/hooks/usePamporovoSimulation';
+import { useTerminalBridge } from '@/hooks/useTerminalBridge';
+import { useTheme } from '@/hooks/useTheme';
+import { SPORTS, hazardFor, type IconName } from '@/constants/sports';
+import { radius, space, hit, elevation } from '@/constants/tokens';
+import { distanceMeters, formatDistance, formatAgo } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 
-// Token is set once at root in _layout.tsx — no need to call setAccessToken here.
+const DARK_STYLE = 'mapbox://styles/vasil-zhelev/cmn3epolr002q01ql4jwcfwdi';
+const LIGHT_STYLE = 'mapbox://styles/mapbox/outdoors-v12'; // until a light custom style exists
 
-const { width, height } = Dimensions.get('window');
-
-export default function RadarScreen() {
+export default function MapScreen() {
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { theme, sportProfile, hasSelectedMode, telemetry, squadStatus, ghostRiders, triggerCrash, glassesBattery } = useSentioStore();
-  const palette = useMemo(() => getThemePalette(sportProfile, theme), [sportProfile, theme]);
+  const bottomSpace = useTabBarSpace();
 
-  const [mapLoaded, setMapLoaded] = useState(false);
+  const telemetry = useSentioStore((s) => s.telemetry);
+  const session = useSentioStore((s) => s.session);
+  const riders = useSentioStore((s) => s.ghostRiders);
+  const hazards = useSentioStore((s) => s.hazards);
+  const sport = useSentioStore((s) => s.sportProfile);
+  const profile = useSentioStore((s) => s.profile);
+  const bleConnected = useSentioStore((s) => s.bleConnected);
+  const battery = useSentioStore((s) => s.glassesBattery);
+  const triggerCrash = useSentioStore((s) => s.triggerCrash);
+  const addHazard = useSentioStore((s) => s.addHazard);
 
   const { sendCommandToDisplay } = useSmartGlassesBLE();
-  const [spamData, setSpamData] = useState({ ts: 0, emoji: '' });
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [selectedRider, setSelectedRider] = useState<GhostRider | null>(null);
+  const [selectedHazard, setSelectedHazard] = useState<Hazard | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [toast, setToast] = useState<{ icon: IconName; text: string } | null>(null);
+  const [spam, setSpam] = useState({ ts: 0, emoji: '' });
+  const [talking, setTalking] = useState(false);
 
-  const [selectedRider, setSelectedRider] = useState<any>(null);
-  const slideAnim = useRef(new Animated.Value(400)).current;
-
-  // Start the Pamporovo simulation — moves 4 friends on pistes + lifts
   usePamporovoSimulation(['g1', 'g2', 'g3', 'g4']);
-
-  // Dynamic Terminal Bridge link
-  useTerminalBridge((emoji) => {
-    setSpamData({ ts: Date.now(), emoji });
-  });
-
-  const [fanVisible, setFanVisible] = useState(false);
-  const [activeSector, setActiveSector] = useState<number>(1);
-  const reportBtnScale = useRef(new Animated.Value(1)).current;
-
-  // Track active sector using ref for instant access inside PanResponder callbacks
-  const activeSectorRef = useRef<number>(1);
-
-  // Dynamic hitTest mapping absolute screen drag coordinates to sectors
-  const hitTest = (px: number, py: number): number => {
-    const dx = px - width;   // Distance relative to screen right edge
-    const dy = py - height;  // Distance relative to screen bottom edge
-
-    let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (deg < 0) deg += 360;
-
-    // Clamp angle to the active quarter quadrant [180°, 270°]
-    if (deg < 180 || deg > 270) {
-      if (deg > 270 && deg < 360) deg = 270;
-      else if (deg >= 0 && deg < 90) deg = 270;
-      else deg = 180;
-    }
-
-    const idx = Math.floor((deg - 180) / 30); // 30 degrees per slice
-    return Math.min(Math.max(idx, 0), 2);
-  };
-
-  const updateActiveSector = (idx: number) => {
-    if (idx === activeSectorRef.current) return;
-    activeSectorRef.current = idx;
-    setActiveSector(idx);
-    Haptics.selectionAsync();
-  };
-
-  const reportPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        setFanVisible(true);
-        activeSectorRef.current = 1;
-        setActiveSector(1);
-        Animated.spring(reportBtnScale, {
-          toValue: 1.15,
-          useNativeDriver: true,
-        }).start();
-      },
-      onPanResponderMove: (e) => {
-        const { pageX, pageY } = e.nativeEvent;
-        const idx = hitTest(pageX, pageY);
-        updateActiveSector(idx);
-      },
-      onPanResponderRelease: () => {
-        const idx = activeSectorRef.current;
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
-        // Dynamic reporting triggers
-        const sectors = sportProfile === 'SKI' 
-          ? ['ICY_SLOPE', 'BIG_QUEUE', 'UNPREPPED'] 
-          : ['WASH_OUT', 'ROCK_DROP', 'RUT_TRAP'];
-        
-        console.log(`[REPORT SYSTEM] Reported: ${sectors[idx]}`);
-        
-        Animated.spring(reportBtnScale, {
-          toValue: 1,
-          useNativeDriver: true,
-        }).start(() => {
-          setFanVisible(false);
-        });
-      },
-      onPanResponderTerminate: () => {
-        Animated.spring(reportBtnScale, {
-          toValue: 1,
-          useNativeDriver: true,
-        }).start(() => {
-          setFanVisible(false);
-        });
-      },
-    })
-  ).current;
+  useTerminalBridge((emoji) => setSpam({ ts: Date.now(), emoji }));
 
   useEffect(() => {
-    if (selectedRider) {
-      Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-    } else {
-      Animated.timing(slideAnim, { toValue: 400, duration: 250, useNativeDriver: true }).start();
-    }
-  }, [selectedRider]);
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
 
-  if (!hasSelectedMode) return <ModeSelector />;
+  const liveRider = selectedRider ? riders.find((r) => r.id === selectedRider.id) ?? selectedRider : null;
+  const dist = (lat: number, lng: number) => distanceMeters(telemetry.latitude, telemetry.longitude, lat, lng);
 
-  const onRiderPress = (rider: any) => {
-    Haptics.selectionAsync();
-    setSelectedRider(rider);
+  const report = (kind: string) => {
+    const h = hazardFor(sport, kind);
+    addHazard({ id: `r_${Date.now()}`, kind, latitude: telemetry.latitude + 0.0004, longitude: telemetry.longitude, reportedBy: profile.name, reportedAt: Date.now() });
+    haptic.success();
+    setReportOpen(false);
+    setToast({ icon: h.icon, text: `${h.label} reported — your crew will see it` });
   };
 
-  // Use the user's custom Mapbox studio style for both themes
-  const styleURL = 'mapbox://styles/vasil-zhelev/cmn3epolr002q01ql4jwcfwdi';
+  const react = (emoji: string, dir: string) => {
+    haptic.success();
+    setSpam({ ts: Date.now(), emoji });
+    sendCommandToDisplay(JSON.stringify({ s: telemetry.speed, dir }));
+  };
 
   return (
-    <View style={styles.root}>
-      {/* ── MAP ── */}
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Mapbox.MapView
-        style={StyleSheet.absoluteFillObject}
-        styleURL={styleURL}
-        logoEnabled={true}
+        style={StyleSheet.absoluteFill}
+        styleURL={isDark ? DARK_STYLE : LIGHT_STYLE}
+        logoEnabled={false}
         attributionEnabled={false}
         compassEnabled={false}
+        scaleBarEnabled={false}
         onPress={() => setSelectedRider(null)}
         onDidFinishLoadingStyle={() => setMapLoaded(true)}
       >
-        <Mapbox.Camera
-          zoomLevel={13.5}
-          centerCoordinate={[telemetry.longitude, telemetry.latitude]}
-          pitch={60}
-          animationDuration={0}
-        />
+        <Mapbox.Camera zoomLevel={14.5} centerCoordinate={[telemetry.longitude, telemetry.latitude]} pitch={55} animationDuration={0} />
 
-        {/* User Marker: now "different" with a unique memoji and glow */}
-        <Mapbox.MarkerView id="user" coordinate={[telemetry.longitude, telemetry.latitude]}>
-          <View style={styles.riderWrap}>
-            <View style={[styles.meRing, { borderColor: palette.accent }]} />
-            <Image source={require('../../assets/images/avatar_user.png')} style={[styles.riderAvatar, { borderColor: palette.accent, borderWidth: 2 }]} />
-            <View style={[styles.meDot, { backgroundColor: palette.accent }]} />
+        {hazards.map((h) => {
+          const kind = hazardFor(sport, h.kind);
+          return (
+            <Mapbox.MarkerView key={h.id} id={h.id} coordinate={[h.longitude, h.latitude]}>
+              <Pressable onPress={() => { haptic.select(); setSelectedHazard(h); }} accessibilityRole="button" accessibilityLabel={`${kind.label}, reported ${formatAgo(h.reportedAt)}`} hitSlop={8}>
+                <View style={[styles.hazard, { backgroundColor: colors.warning, borderColor: isDark ? colors.bg : '#fff' }]}>
+                  <Ionicons name={kind.icon} size={16} color="#1A1200" />
+                </View>
+              </Pressable>
+            </Mapbox.MarkerView>
+          );
+        })}
+
+        {riders.map((r) => {
+          const selected = liveRider?.id === r.id;
+          return (
+            <Mapbox.MarkerView key={r.id} id={r.id} coordinate={[r.longitude, r.latitude]}>
+              <Pressable onPress={() => { haptic.select(); setSelectedRider(r); }} accessibilityRole="button" accessibilityLabel={`${r.name}, ${r.speed} km/h`} style={{ alignItems: 'center' }} hitSlop={6}>
+                <Avatar source={r.avatarUri} size={selected ? 48 : 40} ringColor={selected ? colors.accent : isDark ? colors.surfaceRaised : '#fff'} />
+                <View style={[styles.riderTag, { backgroundColor: selected ? colors.accent : colors.surfaceRaised }]}>
+                  <Text variant="caption" color={selected ? colors.onAccent : colors.text} tabular>
+                    {selected ? `${r.name} · ${r.speed} km/h` : r.name}
+                  </Text>
+                </View>
+              </Pressable>
+            </Mapbox.MarkerView>
+          );
+        })}
+
+        <Mapbox.MarkerView id="me" coordinate={[telemetry.longitude, telemetry.latitude]}>
+          <View style={styles.meWrap} accessible accessibilityLabel="Your position">
+            <View style={[styles.meHalo, { backgroundColor: colors.accentSoft, borderColor: colors.accent }]} />
+            <View style={[styles.meDot, { backgroundColor: colors.accent, borderColor: '#fff' }]} />
           </View>
         </Mapbox.MarkerView>
-
-        {ghostRiders.map((rider) => (
-          <Mapbox.MarkerView
-            key={rider.id}
-            id={rider.id}
-            coordinate={[rider.longitude, rider.latitude]}
-          >
-            <TouchableOpacity onPress={() => onRiderPress(rider)} activeOpacity={0.8}>
-              <View style={styles.riderWrap}>
-                <View style={styles.riderLabel}>
-                  <Text style={styles.riderName}>{rider.name}</Text>
-                  <Text style={styles.riderSpeed}>{rider.speed}km/h</Text>
-                </View>
-                <View style={[styles.riderRing, { borderColor: palette.accent }]} />
-                <Image source={rider.avatarUri} style={styles.riderAvatar} />
-              </View>
-            </TouchableOpacity>
-          </Mapbox.MarkerView>
-        ))}
       </Mapbox.MapView>
 
-      {!mapLoaded && (
-        <View style={[styles.loadingOverlay, StyleSheet.absoluteFillObject]}>
-          <View style={[styles.spinner, { borderColor: palette.accent }]} />
-          <Text style={styles.loadingText}>WARMING UP RADAR...</Text>
-        </View>
-      )}
+      {!mapLoaded && <Animated.View exiting={FadeOut.duration(300)} style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg }]} />}
 
-      {/* ── TOP HUD — three separated tactical pills ── */}
-      <View style={[styles.pillsRow, { top: insets.top + 12, opacity: mapLoaded ? 1 : 0 }]}>
-        <TacticalBlur tint="dark" style={[styles.pill, UI.tacticalShadow]}>
-          <TouchableOpacity onLongPress={triggerCrash} activeOpacity={0.7}>
-            <Text style={styles.pillTitle}>RADAR</Text>
-          </TouchableOpacity>
-        </TacticalBlur>
-
-        <TacticalBlur tint="dark" style={[styles.pill, styles.pillCenter, UI.tacticalShadow]}>
-          <Text style={styles.pillMono}>[ G: {(telemetry.gForce || 0).toFixed(1)}G // BAT: {glassesBattery}% ]</Text>
-        </TacticalBlur>
+      {/* ── Top bar ── */}
+      <View style={[styles.topBar, { top: insets.top + space.sm }]} pointerEvents="box-none">
+        <PressableScale onPress={() => router.push('/settings')} accessibilityRole="button" accessibilityLabel="Profile and settings" style={[styles.avatarBtn, elevation.float]}>
+          <Avatar source={profile.avatar} size={44} ringColor={isDark ? colors.surfaceRaised : '#fff'} />
+        </PressableScale>
+        <View style={{ flex: 1 }} />
+        <Chip
+          glass
+          dotColor={bleConnected ? colors.success : colors.textTertiary}
+          icon={bleConnected ? undefined : 'glasses-outline'}
+          label={bleConnected ? `Goggles ${battery}%` : 'Goggles offline'}
+          onPress={() => router.navigate('/goggles')}
+        />
+        <Chip glass icon="snow-outline" label="−4° · 35 cm" />
       </View>
 
-      {/* ── BOTTOM TELEMETRY OVERLAY ── */}
-      <View style={[styles.bottomOverlay, { bottom: insets.bottom + 20 }]} pointerEvents="box-none">
-        <View style={styles.telemetryGroup} pointerEvents="none">
-          <Text style={styles.telemetryLabel}>LIVE GPS TELEMETRY</Text>
-          <View style={styles.speedRow}>
-            <Text style={styles.speedValue}>{telemetry.speed}</Text>
-            <Text style={styles.speedUnit}>KM/H</Text>
-          </View>
-        </View>
-
-        <View style={styles.controlsGroup} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.gloveBtn, UI.tacticalShadow]}
-            activeOpacity={0.8}
-            onLongPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
-          >
-            <TacticalBlur tint="dark" style={styles.gloveFill}>
-              <Ionicons name="mic" size={30} color="#FFF" />
-              <Text style={styles.gloveLabel}>PTT</Text>
-            </TacticalBlur>
-          </TouchableOpacity>
-
-          <Animated.View
-            {...reportPan.panHandlers}
-            style={[
-              styles.gloveBtn,
-              UI.tacticalShadow,
-              {
-                transform: [{ scale: reportBtnScale }],
-              },
-            ]}
-          >
-            <TacticalBlur tint="dark" style={styles.gloveFill}>
-              <Text style={styles.reportEmoji}>⚠️</Text>
-            </TacticalBlur>
-          </Animated.View>
-        </View>
-      </View>
-
-      {/* ── RIDER QUICK ACTIONS ── */}
-      {selectedRider && (
-        <Animated.View style={[styles.quickActionContainer, { bottom: insets.bottom + 10, transform: [{ translateY: slideAnim }] }]}>
-          <TacticalBlur tint="dark" intensity={100} style={[styles.quickActionBlur, UI.tacticalShadow]}>
-            <View style={styles.quickHeader}>
-              <View>
-                <Text style={styles.quickName}>{selectedRider.name.toUpperCase()}</Text>
-                <Text style={styles.quickSub}>COMM LINK OPEN</Text>
-              </View>
-              <TouchableOpacity onPress={() => setSelectedRider(null)}>
-                <Ionicons name="close-circle" size={24} color="#8E8E93" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.actionGrid}>
-              <ActionButton icon="chatbubble-ellipses" label="VOICE" color="#5E5CE6" />
-              <ActionButton 
-                icon="heart" 
-                label="LOVE" 
-                color="#FF2D55" 
-                onPress={() => {
-                  setSpamData({ ts: Date.now(), emoji: '❤️' });
-                  sendCommandToDisplay(JSON.stringify({ s: telemetry.speed, dir: 'heart' }));
-                }} 
-              />
-              <ActionButton 
-                icon="flash" 
-                label="BOOST" 
-                color="#FFD60A" 
-                onPress={() => {
-                  setSpamData({ ts: Date.now(), emoji: '⚡' });
-                  sendCommandToDisplay(JSON.stringify({ s: telemetry.speed, dir: 'boost' }));
-                }} 
-              />
-              <ActionButton 
-                icon="skull" 
-                label="WATCH" 
-                color="#FFF" 
-                onPress={() => {
-                  setSpamData({ ts: Date.now(), emoji: '💀' });
-                  sendCommandToDisplay(JSON.stringify({ s: telemetry.speed, dir: 'skull' }));
-                }} 
-              />
-            </View>
-          </TacticalBlur>
+      {toast && (
+        <Animated.View entering={FadeInDown.springify().damping(20)} exiting={FadeOut} style={[styles.toastWrap, { top: insets.top + 68 }]} accessibilityLiveRegion="polite">
+          <Surface variant="raised" padding={space.md} radius={radius.pill} style={styles.toast}>
+            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+            <Text variant="label">{toast.text}</Text>
+          </Surface>
         </Animated.View>
       )}
 
-      <EmojiSpam triggerDate={spamData.ts} currentEmoji={spamData.emoji} />
+      {talking && (
+        <Animated.View entering={FadeIn} exiting={FadeOut} style={[styles.toastWrap, { top: insets.top + 68 }]}>
+          <Surface variant="raised" padding={space.md} radius={radius.pill} style={styles.toast}>
+            <Ionicons name="mic" size={20} color={colors.accent} />
+            <Text variant="label">Talking to your crew…</Text>
+          </Surface>
+        </Animated.View>
+      )}
 
-      <ReportFan
-        visible={fanVisible}
-        activeSector={activeSector}
-      />
+      {/* ── Bottom: speed + glove controls ── */}
+      <View style={[styles.bottom, { bottom: bottomSpace - space.sm }]} pointerEvents="box-none">
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
+          <ActionTile icon="warning-outline" label="Report" onPress={() => setReportOpen(true)} />
+          <ActionTile
+            icon="mic-outline"
+            label={talking ? 'Release' : 'Hold to talk'}
+            active={talking}
+            onPressIn={() => { haptic.tap(); setTalking(true); }}
+            onPressOut={() => setTalking(false)}
+          />
+          <SosTile onTrigger={triggerCrash} />
+        </View>
+
+        <Surface variant="glass" padding={space.lg} radius={radius.lg}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <View accessible accessibilityLabel={`Speed ${Math.round(telemetry.speed)} kilometres per hour`}>
+              <Text variant="label" tone="secondary">
+                Speed
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                <Text variant="display" tabular>
+                  {Math.round(telemetry.speed)}
+                </Text>
+                <Text variant="bodyStrong" tone="secondary">
+                  km/h
+                </Text>
+              </View>
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 4, paddingBottom: 6 }}>
+              <MiniStat label="Max" value={`${Math.round(session.maxSpeed)} km/h`} />
+              <MiniStat label="Alt" value={`${Math.round(telemetry.altitude)} m`} />
+              <MiniStat label="G" value={telemetry.gForce.toFixed(1)} />
+            </View>
+          </View>
+        </Surface>
+      </View>
+
+      <EmojiSpam triggerDate={spam.ts} currentEmoji={spam.emoji} />
+
+      {/* ── Report sheet ── */}
+      <Sheet visible={reportOpen} onClose={() => setReportOpen(false)} title="Report on this spot" subtitle="Your crew and nearby riders will see it on the map.">
+        <View style={styles.reportGrid}>
+          {SPORTS[sport].hazards.map((h) => (
+            <PressableScale key={h.key} onPress={() => report(h.key)} accessibilityRole="button" accessibilityLabel={`Report ${h.label}`} style={[styles.reportTile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.reportIcon, { backgroundColor: colors.warningSoft }]}>
+                <Ionicons name={h.icon} size={26} color={colors.warning} />
+              </View>
+              <Text variant="label" align="center">
+                {h.label}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+      </Sheet>
+
+      {/* ── Rider sheet ── */}
+      <Sheet visible={!!liveRider} onClose={() => setSelectedRider(null)}>
+        {liveRider && (
+          <View style={{ gap: space.xl }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
+              <Avatar source={liveRider.avatarUri} size={64} status="online" />
+              <View style={{ flex: 1 }}>
+                <Text variant="headline">{liveRider.name}</Text>
+                <Text variant="callout" tone="secondary" tabular>
+                  {formatDistance(dist(liveRider.latitude, liveRider.longitude))} away · Level {liveRider.level}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text variant="title" tabular>
+                  {liveRider.speed}
+                </Text>
+                <Text variant="caption" tone="secondary">
+                  km/h
+                </Text>
+              </View>
+            </View>
+            <View>
+              <Text variant="label" tone="secondary" style={{ marginBottom: space.sm }}>
+                Send to {liveRider.name}’s goggles
+              </Text>
+              <View style={{ flexDirection: 'row', gap: space.sm }}>
+                {[
+                  { e: '❤️', d: 'heart', l: 'Love' },
+                  { e: '⚡', d: 'boost', l: 'Send it' },
+                  { e: '💀', d: 'skull', l: 'Careful' },
+                ].map((r) => (
+                  <PressableScale key={r.d} onPress={() => react(r.e, r.d)} accessibilityRole="button" accessibilityLabel={r.l} style={[styles.reaction, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={{ fontSize: 28, lineHeight: 34 }}>{r.e}</Text>
+                    <Text variant="caption" tone="secondary">
+                      {r.l}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              <Button label="Ping" icon="notifications-outline" variant="secondary" style={{ flex: 1 }} onPress={() => { haptic.success(); setToast({ icon: 'notifications', text: `Pinged ${liveRider.name}` }); setSelectedRider(null); }} />
+              <Button label="Follow" icon="navigate-outline" style={{ flex: 1 }} onPress={() => setSelectedRider(null)} />
+            </View>
+          </View>
+        )}
+      </Sheet>
+
+      {/* ── Hazard sheet (Waze-style confirm) ── */}
+      <HazardSheet hazard={selectedHazard} onClose={() => setSelectedHazard(null)} distance={selectedHazard ? dist(selectedHazard.latitude, selectedHazard.longitude) : 0} />
     </View>
   );
 }
 
-function ActionButton({ icon, label, color, onPress }: any) {
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <TouchableOpacity 
-      style={styles.actionBtn} 
-      onPress={() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (onPress) onPress();
+    <View style={{ flexDirection: 'row', gap: 6 }}>
+      <Text variant="caption" tone="tertiary">
+        {label}
+      </Text>
+      <Text variant="caption" tabular style={{ minWidth: 56, textAlign: 'right' }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function ActionTile({ icon, label, onPress, onPressIn, onPressOut, active }: { icon: IconName; label: string; onPress?: () => void; onPressIn?: () => void; onPressOut?: () => void; active?: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <PressableScale onPress={onPress ? () => { haptic.tap(); onPress(); } : undefined} onPressIn={onPressIn} onPressOut={onPressOut} accessibilityRole="button" accessibilityLabel={label} style={{ flex: 1 }}>
+      <Surface variant="glass" padding={0} radius={radius.lg} style={[styles.tile, active && { borderColor: colors.accent }]}>
+        <View style={styles.tileInner}>
+          <Ionicons name={icon} size={24} color={active ? colors.accent : colors.text} />
+          <Text variant="label" color={active ? colors.accent : colors.text}>
+            {label}
+          </Text>
+        </View>
+      </Surface>
+    </PressableScale>
+  );
+}
+
+/** Manual SOS: press and hold for 2 s. A fill shows progress so it can't fire by accident. */
+function SosTile({ onTrigger }: { onTrigger: () => void }) {
+  const { colors } = useTheme();
+  const p = useSharedValue(0);
+  const [holding, setHolding] = useState(false);
+  const tick = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stop = () => {
+    if (tick.current) clearInterval(tick.current);
+    tick.current = null;
+  };
+  const fire = () => {
+    stop();
+    setHolding(false);
+    p.value = 0;
+    haptic.sos();
+    onTrigger();
+  };
+  const fill = useAnimatedStyle(() => ({ height: `${p.value * 100}%` }));
+
+  return (
+    <Pressable
+      onPressIn={() => {
+        setHolding(true);
+        haptic.warning();
+        tick.current = setInterval(() => haptic.heavy(), 400);
+        p.value = withTiming(1, { duration: 2000, easing: Easing.linear }, (f) => {
+          if (f) runOnJS(fire)();
+        });
       }}
+      onPressOut={() => {
+        stop();
+        setHolding(false);
+        cancelAnimation(p);
+        p.value = withTiming(0, { duration: 200 });
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="SOS"
+      accessibilityHint="Press and hold for two seconds to start an emergency alert"
+      accessibilityActions={[{ name: 'activate' }]}
+      onAccessibilityAction={() => onTrigger()}
+      style={{ flex: 1 }}
     >
-      <View style={[styles.actionIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon} size={20} color={color} />
+      <View style={[styles.tile, styles.sosTile, { backgroundColor: colors.sos }, elevation.float]}>
+        <Animated.View style={[styles.sosFill, fill]} />
+        <View style={styles.tileInner}>
+          <Ionicons name="shield-half" size={24} color="#fff" />
+          <Text variant="label" color="#fff">
+            {holding ? 'Keep holding' : 'Hold for SOS'}
+          </Text>
+        </View>
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
+    </Pressable>
+  );
+}
+
+function HazardSheet({ hazard, onClose, distance }: { hazard: Hazard | null; onClose: () => void; distance: number }) {
+  const { colors } = useTheme();
+  const sport = useSentioStore((s) => s.sportProfile);
+  const removeHazard = useSentioStore((s) => s.removeHazard);
+  const kind = hazard ? hazardFor(sport, hazard.kind) : null;
+  return (
+    <Sheet visible={!!hazard} onClose={onClose}>
+      {hazard && kind && (
+        <View style={{ gap: space.xl }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
+            <View style={[styles.reportIcon, { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.warningSoft }]}>
+              <Ionicons name={kind.icon} size={28} color={colors.warning} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="headline">{kind.label}</Text>
+              <Text variant="callout" tone="secondary">
+                {formatDistance(distance)} away · {hazard.reportedBy}, {formatAgo(hazard.reportedAt).toLowerCase()}
+              </Text>
+            </View>
+          </View>
+          <View>
+            <Text variant="bodyStrong" style={{ marginBottom: space.md }}>
+              Is it still there?
+            </Text>
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              <Button label="Gone" icon="close" variant="secondary" style={{ flex: 1 }} onPress={() => { haptic.success(); removeHazard(hazard.id); onClose(); }} />
+              <Button label="Still there" icon="checkmark" style={{ flex: 1 }} onPress={() => { haptic.success(); onClose(); }} />
+            </View>
+          </View>
+        </View>
+      )}
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-
-  // ── HUD Pills ──
-  pillsRow: {
-    position: 'absolute',
-    left: UI.pagePadding,
-    right: UI.pagePadding,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-    zIndex: 100,
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillCenter: { flex: 1 },
-  pillTitle: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 2,
-    fontFamily: FONTS.sans,
-  },
-  pillMono: {
-    color: '#8E8E93',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    fontFamily: FONTS.mono,
-  },
-
-  // ── Markers ──
-  userDot: {
-    width: 22, height: 22, borderRadius: 11, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  userDotCore: { width: 9, height: 9, borderRadius: 5 },
-  
-  meRing: {
-    position: 'absolute',
-    width: 44, height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    opacity: 0.4,
-  },
-  meDot: {
-    position: 'absolute',
-    bottom: -2,
-    width: 8, height: 8,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: '#FFF',
-  },
-
-  riderWrap: { width: 60, alignItems: 'center', justifyContent: 'center' },
-  riderLabel: {
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  riderName: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    fontFamily: FONTS.sans,
-  },
-  riderSpeed: {
-    color: '#8AFF72',
-    fontSize: 8,
-    fontWeight: '700',
-    fontFamily: FONTS.mono,
-  },
-  riderRing: {
-    position: 'absolute', bottom: 0, alignSelf: 'center',
-    width: 36, height: 36,
-    borderRadius: 18, borderWidth: 1, opacity: 0.5,
-  },
-  riderAvatar: { 
-    width: 30, 
-    height: 30, 
-    borderRadius: 15, 
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)',
-  },
-
-  // ── Quick Action Overlay ──
-  quickActionContainer: {
-    position: 'absolute',
-    left: UI.pagePadding,
-    right: UI.pagePadding,
-    alignItems: 'center',
-    zIndex: 200,
-  },
-  quickActionBlur: {
-    width: '100%',
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  quickHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  quickName: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 2, fontFamily: FONTS.sans },
-  quickSub: { color: '#8E8E93', fontSize: 9, fontWeight: '800', letterSpacing: 1, fontFamily: FONTS.mono },
-  
-  actionGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  actionBtn: { alignItems: 'center', width: '22%' },
-  actionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  actionLabel: { color: '#8E8E93', fontSize: 8, fontWeight: '800', letterSpacing: 1, fontFamily: FONTS.mono },
-
-  // ── Bottom Overlay ──
-  bottomOverlay: {
-    position: 'absolute',
-    left: UI.pagePadding,
-    right: UI.pagePadding,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    zIndex: 100,
-  },
-  telemetryGroup: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  controlsGroup: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  telemetryLabel: {
-    fontSize: 10,
-    color: '#8E8E93',
-    fontWeight: '800',
-    letterSpacing: 2,
-    marginBottom: -4,
-    fontFamily: FONTS.mono,
-  },
-  speedRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
-  speedValue: {
-    fontSize: 84,
-    fontWeight: '900',
-    color: '#FFF',
-    fontFamily: FONTS.technical,
-    lineHeight: 90,
-  },
-  speedUnit: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#8E8E93',
-    marginBottom: 16,
-    fontFamily: FONTS.sans,
-  },
-
-  // ── Glove Buttons ──
-  controlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  gloveBtn: {
-    width: UI.gloveSize,
-    height: UI.gloveSize,
-    borderRadius: UI.gloveSize / 2,
-    overflow: 'hidden',
-  },
-  gloveFill: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gloveLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 1,
-    marginTop: 2,
-    fontFamily: FONTS.sans,
-  },
-  reportEmoji: {
-    fontSize: 32,
-    lineHeight: 38,
-  },
-  loadingOverlay: {
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 999,
-  },
-  spinner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 4,
-    borderColor: '#FFF',
-    borderTopColor: 'transparent',
-    marginBottom: 20,
-  },
-  loadingText: {
-    color: '#FFF',
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    letterSpacing: 4,
-    opacity: 0.6,
-  },
+  topBar: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  avatarBtn: { borderRadius: 24 },
+  toastWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  toast: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },
+  bottom: { position: 'absolute', left: space.lg, right: space.lg, gap: space.sm },
+  tile: { height: hit.glove + 8, borderRadius: radius.lg },
+  tileInner: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  sosTile: { overflow: 'hidden' },
+  sosFill: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.28)' },
+  hazard: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  riderTag: { marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  meWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  meHalo: { position: 'absolute', width: 44, height: 44, borderRadius: 22, borderWidth: 1 },
+  meDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 3 },
+  reportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  reportTile: { width: '31.5%', aspectRatio: 1, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.sm },
+  reportIcon: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  reaction: { flex: 1, height: 76, borderRadius: radius.lg, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
 });

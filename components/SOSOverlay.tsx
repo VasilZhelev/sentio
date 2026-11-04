@@ -1,200 +1,264 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
-import TacticalBlur from './TacticalBlur';
-import { useSentioStore } from '../store/useSentioStore';
-import { FONTS, getThemePalette } from '../constants/Styles';
-import * as Haptics from 'expo-haptics';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, AccessibilityInfo, ScrollView } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { useSmartGlassesBLE } from '../hooks/useSmartGlassesBLE';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, Button, Surface } from '@/components/ui';
+import { HoldButton } from '@/components/ui/HoldButton';
+import { useSentioStore } from '@/store/useSentioStore';
+import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
+import { useTheme } from '@/hooks/useTheme';
+import { haptic } from '@/lib/haptics';
+import { formatCoord, formatAgo } from '@/lib/format';
+import { radius, space } from '@/constants/tokens';
 
-const { width, height } = Dimensions.get('window');
+// The SOS screen uses its own fixed palette so it looks identical in light & dark mode.
+const SOS = {
+  bg: '#C4161C',
+  bgDeep: '#8E0E13',
+  ring: 'rgba(255,255,255,0.18)',
+  text: '#FFFFFF',
+  textSoft: 'rgba(255,255,255,0.78)',
+  panel: 'rgba(0,0,0,0.22)',
+};
 
+/**
+ * Global crash / SOS overlay. Shown above everything.
+ * COUNTDOWN → (I'm OK: cancel) | (timeout / Get help now: SENT) → SENT → hold "I'm safe" to close.
+ */
 export default function SOSOverlay() {
-  const { 
-    isCrashOverlayVisible, 
-    crashCountdown, 
-    crashStatus, 
-    tickCrash, 
-    finishCrash, 
-    cancelCrash,
-    sportProfile,
-    theme
-  } = useSentioStore();
-
+  const visible = useSentioStore((s) => s.isCrashOverlayVisible);
+  const status = useSentioStore((s) => s.crashStatus);
+  const countdown = useSentioStore((s) => s.crashCountdown);
+  const total = useSentioStore((s) => s.sosCountdownSeconds);
+  const tickCrash = useSentioStore((s) => s.tickCrash);
+  const finishCrash = useSentioStore((s) => s.finishCrash);
+  const cancelCrash = useSentioStore((s) => s.cancelCrash);
   const { sendCancel } = useSmartGlassesBLE();
-  const palette = getThemePalette(sportProfile, theme);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Countdown timer logic
+  // Countdown driver
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    if (isCrashOverlayVisible && crashStatus === 'COUNTDOWN') {
-      if (crashCountdown > 0) {
-        timer = setTimeout(() => {
-          tickCrash();
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        }, 1000);
-      } else {
-        finishCrash();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
+    if (!visible || status !== 'COUNTDOWN') return;
+    if (countdown <= 0) {
+      haptic.sos();
+      finishCrash();
+      AccessibilityInfo.announceForAccessibility('Emergency alert sent. Help is on the way.');
+      return;
     }
-    return () => clearTimeout(timer);
-  }, [isCrashOverlayVisible, crashCountdown, crashStatus]);
+    const t = setTimeout(() => {
+      // Escalate: stronger haptics in the last 5 seconds
+      if (countdown <= 6) haptic.sos();
+      else haptic.warning();
+      tickCrash();
+      if (countdown % 5 === 0 || countdown <= 4) AccessibilityInfo.announceForAccessibility(`Sending help in ${countdown - 1} seconds`);
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [visible, status, countdown, tickCrash, finishCrash]);
 
-  // Pulse animation for the background
-  useEffect(() => {
-    if (isCrashOverlayVisible && crashStatus === 'COUNTDOWN') {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.5, duration: 500, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true })
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [isCrashOverlayVisible, crashStatus]);
+  const cancel = () => {
+    haptic.success();
+    sendCancel();
+    cancelCrash();
+    AccessibilityInfo.announceForAccessibility('Alert cancelled');
+  };
 
-  if (!isCrashOverlayVisible) return null;
-
-  const isSent = crashStatus === 'SENT';
+  if (!visible) return null;
 
   return (
-    <View style={styles.absoluteFill} pointerEvents="auto">
-      <TacticalBlur tint="dark" fallbackOpacity={0.95} style={styles.absoluteFill}>
-        {/* Pulsing red background behind everything */}
-        <Animated.View 
-          style={[
-            styles.pulseBg,
-            { transform: [{ scale: pulseAnim }], opacity: isSent ? 0.2 : 0.6 }
-          ]} 
-        />
+    <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(200)} style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]} accessibilityViewIsModal>
+      {status === 'SENT' ? (
+        <SentView onSafe={cancel} />
+      ) : (
+        <CountdownView countdown={countdown} total={total} onCancel={cancel} onSendNow={() => { haptic.sos(); finishCrash(); }} />
+      )}
+    </Animated.View>
+  );
+}
 
-        <View style={styles.content}>
-          <Ionicons name="warning" size={80} color={isSent ? palette.accent : "#FF3B30"} />
-          
-          <Text style={styles.title}>
-            {isSent ? "SOS SENT" : "CRASH DETECTED"}
+function CountdownView({ countdown, total, onCancel, onSendNow }: { countdown: number; total: number; onCancel: () => void; onSendNow: () => void }) {
+  const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
+  const crewCount = useSentioStore((s) => s.ghostRiders.length);
+  const pulse = useSharedValue(0);
+  const drain = useSharedValue(countdown / Math.max(1, total));
+
+  useEffect(() => {
+    if (!reduced) pulse.value = withRepeat(withTiming(1, { duration: 1000, easing: Easing.out(Easing.quad) }), -1, false);
+  }, [reduced, pulse]);
+
+  useEffect(() => {
+    drain.value = withTiming(Math.max(0, countdown - 1) / Math.max(1, total), { duration: 1000, easing: Easing.linear });
+  }, [countdown, total, drain]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 0.5 }], opacity: 1 - pulse.value }));
+  const barStyle = useAnimatedStyle(() => ({ width: `${drain.value * 100}%` }));
+
+  return (
+    <View style={{ flex: 1, backgroundColor: SOS.bg, paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.xl, paddingHorizontal: space.xl }}>
+      <View style={{ alignItems: 'center', gap: space.sm }}>
+        <View style={styles.badge}>
+          <Ionicons name="warning" size={16} color={SOS.text} />
+          <Text variant="label" color={SOS.text}>
+            Crash detected
           </Text>
-
-          <Text style={styles.subtitle}>
-            {isSent 
-              ? "Vital telemetry and GPS coordinates broadcasted to your squad & emergency contacts." 
-              : "High G-Force impact reported from glasses. Sending emergency beacon in..."}
-          </Text>
-
-          {!isSent && (
-            <Text style={styles.countdownValue}>{crashCountdown}</Text>
-          )}
-
-          {isSent && (
-            <TouchableOpacity 
-              style={[styles.btn, styles.btnAck, { backgroundColor: palette.accent }]} 
-              onPress={() => {
-                Haptics.selectionAsync();
-                cancelCrash();
-              }}
-            >
-              <Text style={styles.btnText}>ACKNOWLEDGE</Text>
-            </TouchableOpacity>
-          )}
-
-          {!isSent && (
-            <TouchableOpacity 
-              style={[styles.btn, styles.btnCancel]} 
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                // Tell the ESP32 glasses to stop their countdown too
-                sendCancel();
-                cancelCrash();
-              }}
-            >
-              <Text style={styles.btnText}>I'M OKAY (CANCEL)</Text>
-            </TouchableOpacity>
-          )}
         </View>
-      </TacticalBlur>
+        <Text variant="title" color={SOS.text} align="center" style={{ fontSize: 34, lineHeight: 40, marginTop: space.sm }} accessibilityRole="header">
+          Are you OK?
+        </Text>
+        <Text variant="body" color={SOS.textSoft} align="center">
+          If you don’t respond, we’ll send your location to mountain rescue and {crewCount} people in your crew.
+        </Text>
+      </View>
+
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={styles.ringWrap}>
+          <Animated.View style={[styles.ring, { borderColor: SOS.text }, ringStyle]} />
+          <View style={[styles.core, { backgroundColor: SOS.bgDeep }]}>
+            <Text variant="hero" color={SOS.text} tabular style={{ fontSize: 112, lineHeight: 116 }} accessibilityLabel={`${countdown} seconds`}>
+              {countdown}
+            </Text>
+          </View>
+        </View>
+        <Text variant="bodyStrong" color={SOS.text} style={{ marginTop: space.xxl }}>
+          Sending help in {countdown} s
+        </Text>
+        <View style={[styles.track, { backgroundColor: SOS.ring }]}>
+          <Animated.View style={[styles.fill, barStyle]} />
+        </View>
+      </View>
+
+      <View style={{ gap: space.md }}>
+        <Button
+          label="I’m OK — cancel"
+          icon="checkmark-circle"
+          variant="onSos"
+          size="glove"
+          onPress={onCancel}
+          style={{ height: 76 }}
+          accessibilityHint="Stops the emergency alert"
+        />
+        <Button label="Get help now" icon="medkit" variant="onSosOutline" size="lg" onPress={onSendNow} accessibilityHint="Sends the emergency alert immediately" />
+      </View>
+    </View>
+  );
+}
+
+function SentView({ onSafe }: { onSafe: () => void }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const telemetry = useSentioStore((s) => s.telemetry);
+  const crew = useSentioStore((s) => s.ghostRiders);
+  const sentAt = useSentioStore((s) => s.sosSentAt);
+  const reduced = useReducedMotion();
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    if (!reduced) pulse.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1, false);
+  }, [reduced, pulse]);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + pulse.value * 1.2 }], opacity: 0.6 * (1 - pulse.value) }));
+
+  const notified = [
+    { icon: 'medkit' as const, title: 'Mountain rescue', detail: 'Pamporovo dispatch · location shared', ok: true },
+    { icon: 'people' as const, title: 'Your crew', detail: crew.map((c) => c.name).join(', '), ok: true },
+    { icon: 'heart' as const, title: 'Emergency contacts', detail: 'None added yet', ok: false },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + space.xl, paddingHorizontal: space.xl, paddingBottom: space.xl, gap: space.xl }}>
+        <View style={{ alignItems: 'center', gap: space.md }}>
+          <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={[styles.sentRing, { backgroundColor: colors.sos }, ringStyle]} />
+            <View style={[styles.sentCore, { backgroundColor: colors.sos }]}>
+              <Ionicons name="radio" size={40} color="#fff" />
+            </View>
+          </View>
+          <Text variant="title" align="center" accessibilityRole="header">
+            Help is on the way
+          </Text>
+          <Text variant="body" tone="secondary" align="center">
+            Alert sent {sentAt ? formatAgo(sentAt).toLowerCase() : 'just now'}. Stay where you are and keep your goggles on if you can.
+          </Text>
+        </View>
+
+        <Surface style={{ gap: space.md }}>
+          <Text variant="overline" tone="secondary">
+            Your location
+          </Text>
+          <Text variant="bodyStrong" tabular selectable>
+            {formatCoord(telemetry.latitude, telemetry.longitude)}
+          </Text>
+          <Text variant="callout" tone="secondary" tabular>
+            Altitude {Math.round(telemetry.altitude)} m · updating live
+          </Text>
+        </Surface>
+
+        <Surface padding={0}>
+          {notified.map((n, i) => (
+            <View key={n.title} style={[styles.notifiedRow, i < notified.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderStrong }]}>
+              <View style={[styles.notifiedIcon, { backgroundColor: colors.sosSoft }]}>
+                <Ionicons name={n.icon} size={18} color={colors.sos} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyStrong">{n.title}</Text>
+                <Text variant="callout" tone="secondary" numberOfLines={1}>
+                  {n.detail}
+                </Text>
+              </View>
+              {n.ok ? (
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} accessibilityLabel="Notified" />
+              ) : (
+                <Ionicons name="remove-circle-outline" size={20} color={colors.textTertiary} accessibilityLabel="Not set up" />
+              )}
+            </View>
+          ))}
+        </Surface>
+      </ScrollView>
+
+      <View style={{ paddingHorizontal: space.xl, paddingBottom: insets.bottom + space.lg, gap: space.md }}>
+        <Button label="Call 112" icon="call" variant="sos" size="glove" onPress={() => {}} accessibilityHint="Calling is not connected in this prototype" />
+        <HoldButton
+          label="I’m safe — cancel alert"
+          holdLabel="Hold to cancel the alert…"
+          icon="hand-left"
+          onComplete={onSafe}
+          bg={colors.surfaceRaised}
+          fill={colors.successSoft}
+          fg={colors.text}
+          height={56}
+          accessibilityHint="Press and hold to tell rescue and your crew you are safe"
+        />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  absoluteFill: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 9999,
-  },
-  pulseBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#FF3B30',
-  },
-  content: {
-    flex: 1,
+  badge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    zIndex: 10,
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: SOS.panel,
   },
-  title: {
-    fontFamily: FONTS.sans,
-    fontSize: 42,
-    color: '#FFF',
-    textAlign: 'center',
-    marginVertical: 16,
-    letterSpacing: 2,
-    fontWeight: '900',
-  },
-  subtitle: {
-    fontFamily: FONTS.sans,
-    fontSize: 16,
-    color: '#EBEBF5',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 40,
-    fontWeight: '600',
-  },
-  countdownValue: {
-    fontFamily: FONTS.sans,
-    fontSize: 160,
-    color: '#FFF',
-    lineHeight: 180,
-    fontWeight: '900',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 10,
-  },
-  btn: {
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    borderRadius: 16,
-    marginTop: 40,
-    width: '100%',
-    alignItems: 'center',
-  },
-  btnCancel: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  btnAck: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  btnText: {
-    fontFamily: FONTS.sans,
-    fontSize: 18,
-    color: '#FFF',
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  }
+  ringWrap: { width: 220, height: 220, alignItems: 'center', justifyContent: 'center' },
+  ring: { position: 'absolute', width: 220, height: 220, borderRadius: 110, borderWidth: 3 },
+  core: { width: 200, height: 200, borderRadius: 100, alignItems: 'center', justifyContent: 'center' },
+  track: { width: 220, height: 6, borderRadius: 3, marginTop: space.md, overflow: 'hidden' },
+  fill: { height: '100%', backgroundColor: '#fff', borderRadius: 3 },
+  sentRing: { position: 'absolute', width: 96, height: 96, borderRadius: 48 },
+  sentCore: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
+  notifiedRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
+  notifiedIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

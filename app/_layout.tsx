@@ -1,41 +1,56 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useEffect, useMemo } from 'react';
+import { DarkTheme, DefaultTheme, ThemeProvider, type Theme as NavTheme } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import 'react-native-reanimated';
-import { useSentioStore } from '@/store/useSentioStore';
 import Mapbox from '@rnmapbox/maps';
 import SOSOverlay from '@/components/SOSOverlay';
 import GlassesNotification from '@/components/GlassesNotification';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
 import { useOtaUpdates } from '@/hooks/useOtaUpdates';
+import { useTheme } from '@/hooks/useTheme';
 
-// Set Mapbox access token ONCE at the root module scope.
-// This guarantees the token is registered before any MapView renders on any screen.
+// Register the Mapbox token once, before any MapView renders.
 Mapbox.setAccessToken('pk.eyJ1IjoidmFzaWwtemhlbGV2IiwiYSI6ImNtbXZ5NnFjYTJkOWUyeXIwbmRjd2RkcTAifQ.c0735l2Vej_xd10i6Ol0SQ');
 Mapbox.setTelemetryEnabled(false);
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+export const unstable_settings = { anchor: '(tabs)' };
 
 export default function RootLayout() {
-  const { theme } = useSentioStore();
-  
-  // Initialize BLE Scanner & connectivity (singleton — used across all tabs)
-  useSmartGlassesBLE();
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const { colors, isDark } = useTheme();
 
-  // Pull over-the-air JS updates published with `eas update`
+  useSmartGlassesBLE();
   useOtaUpdates();
 
+  useEffect(() => {
+    if (fontsLoaded || fontError) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded, fontError]);
+
+  const navTheme: NavTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: { ...base.colors, background: colors.bg, card: colors.surface, text: colors.text, border: colors.border, primary: colors.accent },
+    };
+  }, [isDark, colors]);
+
+  if (!fontsLoaded && !fontError) return null;
+
   return (
-    <ThemeProvider value={theme === 'DARK' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    <ThemeProvider value={navTheme}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
-      <SOSOverlay />
       <GlassesNotification />
-      <StatusBar style="light" />
+      <SOSOverlay />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }
