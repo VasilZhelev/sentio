@@ -1,73 +1,63 @@
 /**
- * useTerminalBridge Hook
- * ──────────────────────
- * Hooks the running app to the PC's Terminal Bridge over WebSockets.
- * Allows triggering tactical in-app commands directly from terminal keystrokes.
+ * useTerminalBridge
+ * Connects the running app to the PC terminal bridge (ws://<metro-host>:8989) so demo
+ * events (SOS, hazards, emoji, speed) can be triggered from the keyboard.
  */
-
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import Constants from 'expo-constants';
-import { useSentioStore } from '../store/useSentioStore';
 import * as Haptics from 'expo-haptics';
+import { useSentioStore } from '../store/useSentioStore';
+import { SPORTS } from '@/constants/sports';
 
 export function useTerminalBridge(onEmojiSpam: (emoji: string) => void) {
-  const { triggerCrash, updateTelemetry, telemetry, addHazard } = useSentioStore();
+  const onEmojiRef = useRef(onEmojiSpam);
+  onEmojiRef.current = onEmojiSpam;
 
   useEffect(() => {
-    // Determine the PC's IP address from Expo's Metro Bundler host Uri
     const hostUri = Constants.expoConfig?.hostUri;
     const pcIp = hostUri ? hostUri.split(':')[0] : 'localhost';
     const wsUrl = `ws://${pcIp}:8989`;
 
-    console.log(`[BRIDGE CLIENT] Connecting to terminal bridge at ${wsUrl}`);
     let ws: WebSocket | null = null;
-    let reconnectTimer: any = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
 
     function connect() {
       ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        console.log('[BRIDGE CLIENT] Link established with PC Terminal Bridge.');
-      };
-
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[BRIDGE CLIENT] Received trigger:', data);
-
+          const store = useSentioStore.getState();
           switch (data.type) {
             case 'SOS_TRIGGER':
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              triggerCrash();
+              store.triggerCrash();
               break;
-
-            case 'MOCK_HAZARD':
+            case 'MOCK_HAZARD': {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              // Spawn a random mock hazard slightly ahead of the user
-              const types = ['Icy Patch', 'Fallen Tree', 'Deep Mud', 'Rut Trap', 'Big Queue'];
-              const randomType = types[Math.floor(Math.random() * types.length)];
-              addHazard({
+              const kinds = SPORTS[store.sportProfile].hazards;
+              const kind = kinds[Math.floor(Math.random() * kinds.length)].key;
+              store.addHazard({
                 id: `mock_${Date.now()}`,
-                type: randomType,
-                latitude: telemetry.latitude + (Math.random() - 0.5) * 0.005,
-                longitude: telemetry.longitude + (Math.random() - 0.5) * 0.005,
-                reportedBy: 'PC Terminal',
-                reportedAgo: 'Just now',
+                kind,
+                latitude: store.telemetry.latitude + (Math.random() - 0.5) * 0.005,
+                longitude: store.telemetry.longitude + (Math.random() - 0.5) * 0.005,
+                reportedBy: 'Terminal',
+                reportedAt: Date.now(),
               });
               break;
-
+            }
             case 'EMOJI_SPAM':
-              onEmojiSpam(data.emoji || '⚡');
+              onEmojiRef.current(data.emoji || '⚡');
               break;
-
             case 'SPEED_BOOST':
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              updateTelemetry({ speed: telemetry.speed + 20 });
+              store.updateTelemetry({ speed: store.telemetry.speed + 20 });
               break;
-
             case 'RESET_TELEMETRY':
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              updateTelemetry({ speed: 12 }); // Reset back to a sensible baseline speed
+              store.updateTelemetry({ speed: 12 });
               break;
           }
         } catch (err) {
@@ -76,21 +66,16 @@ export function useTerminalBridge(onEmojiSpam: (emoji: string) => void) {
       };
 
       ws.onclose = () => {
-        console.log('[BRIDGE CLIENT] Connection closed. Retrying in 5 seconds...');
-        reconnectTimer = setTimeout(connect, 5000);
+        if (!disposed) reconnectTimer = setTimeout(connect, 5000);
       };
-
-      ws.onerror = (err) => {
-        console.log('[BRIDGE CLIENT] Socket error, closing...');
-        ws?.close();
-      };
+      ws.onerror = () => ws?.close();
     }
 
     connect();
-
     return () => {
-      if (ws) ws.close();
+      disposed = true;
+      ws?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [triggerCrash, updateTelemetry, telemetry, addHazard, onEmojiSpam]);
+  }, []);
 }
