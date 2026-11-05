@@ -202,8 +202,16 @@ async function _sendReliable(text: string): Promise<boolean> {
 // ─── Handle incoming messages from ESP32 ─────────────────────────────────────
 function _handleIncoming(raw: string) {
   const msg = raw.trim();
-  console.log(`[BLE ← glasses] "${msg}"`);
   const store = useSentioStore.getState();
+
+  // Streams several times a second, so it stays out of the connection log
+  if (msg.startsWith('GFORCE:')) {
+    const g = parseFloat(msg.replace('GFORCE:', ''));
+    if (!isNaN(g)) store.updateTelemetry({ gForce: g });
+    return;
+  }
+
+  console.log(`[BLE ← glasses] "${msg}"`);
   store.addBleLog(`← ${msg}`);
 
   if (msg === 'CRASH_ALERT') {
@@ -215,10 +223,6 @@ function _handleIncoming(raw: string) {
   if (msg === 'TRIGGER_SOS' && store.crashStatus !== 'SENT') {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     store.finishCrash();
-  }
-  if (msg.startsWith('GFORCE:')) {
-    const g = parseFloat(msg.replace('GFORCE:', ''));
-    if (!isNaN(g)) store.updateTelemetry({ gForce: g });
   }
   if (msg.startsWith('BAT:')) {
     const b = parseInt(msg.replace('BAT:', ''), 10);
@@ -289,9 +293,9 @@ async function _connectAndListen(deviceOrId: Device | string) {
 
     if (_speedInterval) clearInterval(_speedInterval);
     _speedInterval = setInterval(() => {
-      const spd = useSentioStore.getState().telemetry.speed;
+      const spd = Math.round(useSentioStore.getState().telemetry.speed);
       _sendRaw(`SPD:${spd}`);
-    }, 2000);
+    }, 1000);
 
     const sendTime = () => {
       const now = new Date();

@@ -173,7 +173,7 @@ export default function MapScreen() {
         <View style={{ flexDirection: 'row', gap: space.lg }}>
           <HudStat label="Max" value={`${Math.round(session.maxSpeed)}`} />
           <HudStat label="Alt" value={`${Math.round(telemetry.altitude)} m`} />
-          <HudStat label="G" value={telemetry.gForce.toFixed(1)} />
+          <HudStat label="G" value={bleConnected ? telemetry.gForce.toFixed(1) : '--'} />
         </View>
       </View>
 
