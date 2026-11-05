@@ -13,6 +13,7 @@ import SOSOverlay from '@/components/SOSOverlay';
 import GlassesNotification from '@/components/GlassesNotification';
 import { CelebrationOverlay, XpToast } from '@/components/fun';
 import { useSmartGlassesBLE } from '@/hooks/useSmartGlassesBLE';
+import { useGpsSpeed } from '@/hooks/useGpsSpeed';
 import { useOtaUpdates } from '@/hooks/useOtaUpdates';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -38,6 +39,7 @@ export default function RootLayout() {
   const { colors, isDark } = useTheme();
 
   useSmartGlassesBLE();
+  useGpsSpeed();
   useOtaUpdates();
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeOut, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, withRepeat, Easing, useReducedMotion } from 'react-native-reanimated';
 import Mapbox from '@rnmapbox/maps';
@@ -54,6 +54,9 @@ export default function MapScreen() {
   const [talking, setTalking] = useState(false);
 
   usePamporovoSimulation(['g1', 'g2', 'g3', 'g4']);
+
+  // Stable reference: a new array on each live telemetry update could reset the user's zoom
+  const cameraCenter = useMemo(() => [telemetry.longitude, telemetry.latitude], [telemetry.longitude, telemetry.latitude]);
   useTerminalBridge((emoji) => setSpam({ ts: Date.now(), emoji }));
 
   useEffect(() => {
@@ -95,7 +98,7 @@ export default function MapScreen() {
         onPress={() => setSelectedRider(null)}
         onDidFinishLoadingStyle={() => setMapLoaded(true)}
       >
-        <Mapbox.Camera zoomLevel={14.2} centerCoordinate={[telemetry.longitude, telemetry.latitude]} pitch={62} heading={200} animationDuration={0} />
+        <Mapbox.Camera zoomLevel={14.2} centerCoordinate={cameraCenter} pitch={62} heading={200} animationDuration={0} />
 
         {/* Real 3D mountains */}
         <Mapbox.RasterDemSource id="sentio-dem" url="mapbox://mapbox.mapbox-terrain-dem-v1" tileSize={514} maxZoomLevel={14} />
@@ -127,7 +130,7 @@ export default function MapScreen() {
           const selected = liveRider?.id === r.id;
           const hot = r.speed > 30;
           return (
-            <Mapbox.MarkerView key={r.id} id={r.id} coordinate={[r.longitude, r.latitude]}>
+            <Mapbox.MarkerView key={r.id} id={r.id} coordinate={[r.longitude, r.latitude]} allowOverlap allowOverlapWithPuck>
               <Pressable onPress={() => { haptic.select(); setSelectedRider(r); }} accessibilityRole="button" accessibilityLabel={`${r.name}, ${r.speed} km/h`} style={{ alignItems: 'center' }} hitSlop={6}>
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <Pulse color={hot ? fun.flame : colors.accent} size={selected ? 50 : 42} />
@@ -143,7 +146,7 @@ export default function MapScreen() {
           );
         })}
 
-        <Mapbox.MarkerView id="me" coordinate={[telemetry.longitude, telemetry.latitude]}>
+        <Mapbox.MarkerView id="me" coordinate={[telemetry.longitude, telemetry.latitude]} allowOverlap allowOverlapWithPuck>
           <View style={styles.meWrap} accessible accessibilityLabel="Your position">
             <View style={[styles.meHalo, { backgroundColor: colors.accent }]} />
             <View style={[styles.meDot, { backgroundColor: colors.accent }]} />
@@ -173,7 +176,7 @@ export default function MapScreen() {
         <View style={{ flexDirection: 'row', gap: space.lg }}>
           <HudStat label="Max" value={`${Math.round(session.maxSpeed)}`} />
           <HudStat label="Alt" value={`${Math.round(telemetry.altitude)} m`} />
-          <HudStat label="G" value={telemetry.gForce.toFixed(1)} />
+          <HudStat label="G" value={bleConnected ? telemetry.gForce.toFixed(1) : '--'} />
         </View>
       </View>
 

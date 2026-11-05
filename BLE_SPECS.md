@@ -25,6 +25,8 @@ Send exactly as Strings (no line endings `\n` required).
 - `CRASH_ALERT` -> Fired instantly when an impact is detected. Trigger the UI countdown on the phone.
 - `TRIGGER_SOS` -> Fired if the countdown on the glasses finishes without being canceled, or when the phone reconnects after an SOS that could not be delivered. Trigger to fetch GPS and send the SOS to the backend.
 
+- `GFORCE:1.2` -> Sent 5 times a second while connected. True G, the highest value since the last update (about 1.0 at rest).
+
 ## Common Pitfalls
 - **Android 12+ Permissions**: Request `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` at runtime.
 - **MTU Size**: ESP32 requests an MTU of 512. Ensure BLE library accepts this MTU negotiation to send longer `MSG:` strings without truncation.
