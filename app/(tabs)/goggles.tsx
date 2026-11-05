@@ -11,6 +11,7 @@ import { haptic } from '@/lib/haptics';
 import { radius, space, fontFamily } from '@/constants/tokens';
 
 const QUICK_MESSAGES = ['Wait for me', 'Meet at the lift', 'Heading down', 'Watch out ahead', 'Lunch?', 'Nice run!'];
+const SAMPLE_INCOMING = ['Where are you?', 'Meet at the lift in 5', 'Fresh powder on the left run!', 'Wait for me at the top'];
 const MAX_LEN = 24;
 
 export default function GogglesScreen() {
@@ -81,7 +82,7 @@ export default function GogglesScreen() {
         <View style={{ gap: space.md }}>
           <SectionHeader title="Show on display" />
           <Text variant="callout" tone="secondary" style={{ marginTop: -space.xs }}>
-            Messages appear in your goggles for 4 seconds.
+            Messages appear in your goggles for 6 seconds.
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, opacity: bleConnected ? 1 : 0.45 }}>
             {QUICK_MESSAGES.map((m) => (
@@ -176,7 +177,18 @@ function DeveloperSection() {
   const triggerCrash = useSentioStore((s) => s.triggerCrash);
   const cancelCrash = useSentioStore((s) => s.cancelCrash);
   const bleConnected = useSentioStore((s) => s.bleConnected);
-  const { sendCancel } = useSmartGlassesBLE();
+  const crew = useSentioStore((s) => s.ghostRiders);
+  const { sendCancel, sendMessage } = useSmartGlassesBLE();
+  const [sampleIndex, setSampleIndex] = useState(0);
+
+  const simulateIncoming = async () => {
+    if (!bleConnected || crew.length === 0) return;
+    const from = crew[sampleIndex % crew.length].name;
+    const ok = await sendMessage(SAMPLE_INCOMING[sampleIndex % SAMPLE_INCOMING.length], from);
+    setSampleIndex((i) => i + 1);
+    if (ok) haptic.success();
+    else haptic.warning();
+  };
 
   return (
     <View style={{ gap: space.md }}>
@@ -200,6 +212,7 @@ function DeveloperSection() {
             <Button label="Simulate crash" icon="warning-outline" variant="secondary" size="md" style={{ flex: 1 }} onPress={triggerCrash} />
             <Button label="Send cancel" icon="close-circle-outline" variant="secondary" size="md" style={{ flex: 1 }} disabled={!bleConnected} onPress={() => { sendCancel(); cancelCrash(); }} />
           </View>
+          <Button label="Simulate incoming message" icon="chatbubble-ellipses-outline" variant="secondary" size="md" disabled={!bleConnected} onPress={simulateIncoming} />
           <Surface variant="sunken" padding={space.md} style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
               <Text variant="label" tone="secondary">
