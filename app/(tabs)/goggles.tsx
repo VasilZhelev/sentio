@@ -22,18 +22,7 @@ export default function GogglesScreen() {
   const brightness = useSentioStore((s) => s.hudBrightness);
   const setBrightness = useSentioStore((s) => s.setHudBrightness);
   const { isScanning, discoveredDevices, scanForDevices, connectToDevice, sendMessage } = useSmartGlassesBLE();
-  const crew = useSentioStore((s) => s.ghostRiders);
   const [text, setText] = useState('');
-  const [sampleIndex, setSampleIndex] = useState(0);
-
-  const simulateIncoming = async () => {
-    if (!bleConnected || crew.length === 0) return;
-    const from = crew[sampleIndex % crew.length].name;
-    const ok = await sendMessage(SAMPLE_INCOMING[sampleIndex % SAMPLE_INCOMING.length], from);
-    setSampleIndex((i) => i + 1);
-    if (ok) haptic.success();
-    else haptic.warning();
-  };
 
   const send = async (msg: string) => {
     const m = msg.trim();
@@ -117,7 +106,6 @@ export default function GogglesScreen() {
             </Text>
             <IconButton icon="arrow-up" size={40} variant={text.trim() && bleConnected ? 'tonal' : 'plain'} active={!!text.trim() && bleConnected} accessibilityLabel="Send to goggles" onPress={() => send(text)} />
           </View>
-          <Button label="Simulate incoming message" icon="chatbubble-ellipses-outline" variant="secondary" size="md" disabled={!bleConnected} onPress={simulateIncoming} />
         </View>
 
         {/* ── Display ── */}
@@ -189,7 +177,18 @@ function DeveloperSection() {
   const triggerCrash = useSentioStore((s) => s.triggerCrash);
   const cancelCrash = useSentioStore((s) => s.cancelCrash);
   const bleConnected = useSentioStore((s) => s.bleConnected);
-  const { sendCancel } = useSmartGlassesBLE();
+  const crew = useSentioStore((s) => s.ghostRiders);
+  const { sendCancel, sendMessage } = useSmartGlassesBLE();
+  const [sampleIndex, setSampleIndex] = useState(0);
+
+  const simulateIncoming = async () => {
+    if (!bleConnected || crew.length === 0) return;
+    const from = crew[sampleIndex % crew.length].name;
+    const ok = await sendMessage(SAMPLE_INCOMING[sampleIndex % SAMPLE_INCOMING.length], from);
+    setSampleIndex((i) => i + 1);
+    if (ok) haptic.success();
+    else haptic.warning();
+  };
 
   return (
     <View style={{ gap: space.md }}>
@@ -213,6 +212,7 @@ function DeveloperSection() {
             <Button label="Simulate crash" icon="warning-outline" variant="secondary" size="md" style={{ flex: 1 }} onPress={triggerCrash} />
             <Button label="Send cancel" icon="close-circle-outline" variant="secondary" size="md" style={{ flex: 1 }} disabled={!bleConnected} onPress={() => { sendCancel(); cancelCrash(); }} />
           </View>
+          <Button label="Simulate incoming message" icon="chatbubble-ellipses-outline" variant="secondary" size="md" disabled={!bleConnected} onPress={simulateIncoming} />
           <Surface variant="sunken" padding={space.md} style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
               <Text variant="label" tone="secondary">
