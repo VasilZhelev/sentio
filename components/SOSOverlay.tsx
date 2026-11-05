@@ -43,13 +43,14 @@ export default function SOSOverlay() {
   const tickCrash = useSentioStore((s) => s.tickCrash);
   const finishCrash = useSentioStore((s) => s.finishCrash);
   const cancelCrash = useSentioStore((s) => s.cancelCrash);
-  const { sendCancel } = useSmartGlassesBLE();
+  const { sendCancel, sendSos } = useSmartGlassesBLE();
 
   // Countdown driver
   useEffect(() => {
     if (!visible || status !== 'COUNTDOWN') return;
     if (countdown <= 0) {
       haptic.sos();
+      sendSos();
       finishCrash();
       AccessibilityInfo.announceForAccessibility('Emergency alert sent. Help is on the way.');
       return;
@@ -62,7 +63,7 @@ export default function SOSOverlay() {
       if (countdown % 5 === 0 || countdown <= 4) AccessibilityInfo.announceForAccessibility(`Sending help in ${countdown - 1} seconds`);
     }, 1000);
     return () => clearTimeout(t);
-  }, [visible, status, countdown, tickCrash, finishCrash]);
+  }, [visible, status, countdown, tickCrash, finishCrash, sendSos]);
 
   const cancel = () => {
     haptic.success();
@@ -78,7 +79,7 @@ export default function SOSOverlay() {
       {status === 'SENT' ? (
         <SentView onSafe={cancel} />
       ) : (
-        <CountdownView countdown={countdown} total={total} onCancel={cancel} onSendNow={() => { haptic.sos(); finishCrash(); }} />
+        <CountdownView countdown={countdown} total={total} onCancel={cancel} onSendNow={() => { haptic.sos(); sendSos(); finishCrash(); }} />
       )}
     </Animated.View>
   );

@@ -176,6 +176,29 @@ async function _sendRaw(text: string): Promise<boolean> {
   }
 }
 
+// ─── Safety commands: acknowledged write, retried once ───────────────────────
+async function _sendReliable(text: string): Promise<boolean> {
+  if (!_device) { console.warn('[BLE] sendReliable: no device'); return false; }
+  const payload = toBase64(text);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await getManager().writeCharacteristicWithResponseForDevice(
+        _device.id,
+        NUS_SERVICE_UUID,
+        NUS_RX_CHARACTERISTIC,
+        payload
+      );
+      useSentioStore.getState().addBleLog(`→ ${text}`);
+      return true;
+    } catch (err) {
+      console.warn('[BLE] Reliable write failed:', err);
+    }
+  }
+  useSentioStore.getState().addBleLog(`❌ Not delivered: ${text}`);
+  return false;
+}
+
 // ─── Handle incoming messages from ESP32 ─────────────────────────────────────
 function _handleIncoming(raw: string) {
   const msg = raw.trim();
@@ -186,8 +209,10 @@ function _handleIncoming(raw: string) {
   if (msg === 'CRASH_ALERT') {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     store.triggerCrash();
+    // Keep the HUD countdown in step with the one set in the app
+    _sendReliable(`CDN:${store.sosCountdownSeconds}`);
   }
-  if (msg === 'TRIGGER_SOS') {
+  if (msg === 'TRIGGER_SOS' && store.crashStatus !== 'SENT') {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     store.finishCrash();
   }
@@ -439,10 +464,13 @@ export function useSmartGlassesBLE() {
     }
   }, []);
 
-  const sendCancel          = useCallback(() => _sendRaw('CANCEL'), []);
-  const sendMessage         = useCallback((text: string) => {
-    useSentioStore.getState().setNotification(text);
-    return _sendRaw(`MSG:${text}`);
+  const sendCancel          = useCallback(() => _sendReliable('CANCEL'), []);
+  const sendSos             = useCallback(() => _sendReliable('SOS'), []);
+  const sendMessage         = useCallback((text: string, from?: string) => {
+    useSentioStore.getState().setNotification(from ? `${from}: ${text}` : text);
+    // "|" separates the sender from the text on the HUD
+    const body = text.replace(/\|/g, ' ');
+    return _sendRaw(from ? `MSG:${from}|${body}` : `MSG:${body}`);
   }, []);
   const sendCommandToDisplay = useCallback((jsonData: string) => _sendRaw(jsonData), []);
   const sendBatteryLevel     = useCallback((level: number) => _sendRaw(`BAT:${Math.max(0, Math.min(100, Math.round(level)))}`), []);
@@ -459,6 +487,7 @@ export function useSmartGlassesBLE() {
     scanForDevices,
     connectToDevice,
     sendCancel,
+    sendSos,
     sendMessage,
     sendBatteryLevel,
     sendCommandToDisplay,

@@ -11,6 +11,7 @@ import { haptic } from '@/lib/haptics';
 import { radius, space, fontFamily } from '@/constants/tokens';
 
 const QUICK_MESSAGES = ['Wait for me', 'Meet at the lift', 'Heading down', 'Watch out ahead', 'Lunch?', 'Nice run!'];
+const SAMPLE_INCOMING = ['Where are you?', 'Meet at the lift in 5', 'Fresh powder on the left run!', 'Wait for me at the top'];
 const MAX_LEN = 24;
 
 export default function GogglesScreen() {
@@ -21,7 +22,18 @@ export default function GogglesScreen() {
   const brightness = useSentioStore((s) => s.hudBrightness);
   const setBrightness = useSentioStore((s) => s.setHudBrightness);
   const { isScanning, discoveredDevices, scanForDevices, connectToDevice, sendMessage } = useSmartGlassesBLE();
+  const crew = useSentioStore((s) => s.ghostRiders);
   const [text, setText] = useState('');
+  const [sampleIndex, setSampleIndex] = useState(0);
+
+  const simulateIncoming = async () => {
+    if (!bleConnected || crew.length === 0) return;
+    const from = crew[sampleIndex % crew.length].name;
+    const ok = await sendMessage(SAMPLE_INCOMING[sampleIndex % SAMPLE_INCOMING.length], from);
+    setSampleIndex((i) => i + 1);
+    if (ok) haptic.success();
+    else haptic.warning();
+  };
 
   const send = async (msg: string) => {
     const m = msg.trim();
@@ -81,7 +93,7 @@ export default function GogglesScreen() {
         <View style={{ gap: space.md }}>
           <SectionHeader title="Show on display" />
           <Text variant="callout" tone="secondary" style={{ marginTop: -space.xs }}>
-            Messages appear in your goggles for 4 seconds.
+            Messages appear in your goggles for 6 seconds.
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, opacity: bleConnected ? 1 : 0.45 }}>
             {QUICK_MESSAGES.map((m) => (
@@ -105,6 +117,7 @@ export default function GogglesScreen() {
             </Text>
             <IconButton icon="arrow-up" size={40} variant={text.trim() && bleConnected ? 'tonal' : 'plain'} active={!!text.trim() && bleConnected} accessibilityLabel="Send to goggles" onPress={() => send(text)} />
           </View>
+          <Button label="Simulate incoming message" icon="chatbubble-ellipses-outline" variant="secondary" size="md" disabled={!bleConnected} onPress={simulateIncoming} />
         </View>
 
         {/* ── Display ── */}
